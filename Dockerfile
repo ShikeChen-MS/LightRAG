@@ -1,5 +1,5 @@
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.12.8-slim as builder
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 RUN pip install --user --no-cache-dir -r lightrag/api/requirements.txt
 
 # Final stage
-FROM python:3.11-slim
+FROM python:3.12.8-slim
 
 WORKDIR /app
 
