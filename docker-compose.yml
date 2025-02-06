@@ -6,8 +6,8 @@ services:
     ports:
       - "${PORT:-9621}:9621"
     volumes:
-      - ./data/rag_storage:/app/data/rag_storage
-      - ./data/inputs:/app/data/inputs
+      - rag_storage:/app/data/rag_storage
+      - inputs:/app/data/inputs
     env_file:
       - .env
     environment:
@@ -20,3 +20,6 @@ services:
 networks:
   lightrag_net:
     driver: bridge
+volumes:
+  rag_storage:
+  inputs:
