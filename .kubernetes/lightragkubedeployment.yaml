@@ -4,7 +4,7 @@ metadata:
   name: lightrag-deployment
   namespace: lightrag
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: lightrag
@@ -13,10 +13,6 @@ spec:
       labels:
         app: lightrag
     spec:
-      hostAliases:
-      - ip: "127.0.0.1"
-        hostnames:
-        - "host.docker.internal"
       containers:
       - name: lightrag-container
         image: lightrag:latest

@@ -1,3 +1,4 @@
+# This is file to let you run docker image in a container instance
 services:
   lightrag:
     build: .
@@ -13,8 +14,9 @@ services:
     restart: unless-stopped
     networks:
       - lightrag_net
+# This for devlopment purpose so that the container can access the host machine
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - ${USE_EXTRA_HOSTS:+host.docker.internal:host-gateway}
 networks:
   lightrag_net:
     driver: bridge
