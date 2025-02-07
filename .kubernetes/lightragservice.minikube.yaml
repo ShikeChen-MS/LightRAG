@@ -4,6 +4,7 @@ metadata:
   name: lightrag-service
   namespace: lightrag
 spec:
+  type: LoadBalancer
   selector:
     app: lightrag
   ports:

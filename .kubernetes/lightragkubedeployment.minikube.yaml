@@ -4,7 +4,7 @@ metadata:
   name: lightrag-deployment
   namespace: lightrag
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: lightrag
@@ -26,6 +26,7 @@ spec:
           name: rag-storage
         - mountPath: /app/data/inputs
           name: inputs
+        imagePullPolicy: Never
       volumes:
       - name: rag-storage
         persistentVolumeClaim:
