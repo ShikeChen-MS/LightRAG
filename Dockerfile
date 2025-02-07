@@ -12,7 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y \
     && . "$HOME/.cargo/env" \
     && rustup default stable \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install -U pip
 
 ENV PATH="/root/.cargo/bin:${PATH}"
 
