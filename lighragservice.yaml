@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: lightrag-service
+  namespace: lightrag
+spec:
+  selector:
+    app: lightrag
+  ports:
+  - protocol: TCP
+    port: 9621
+    targetPort: 9621
