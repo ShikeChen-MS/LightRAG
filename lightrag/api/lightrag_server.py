@@ -1,43 +1,43 @@
-from fastapi import (
-    FastAPI,
-    HTTPException,
-    File,
-    UploadFile,
-    Form,
-    BackgroundTasks,
-)
-
-import threading
-import os
-import json
-import re
-from fastapi.staticfiles import StaticFiles
-import logging
 import argparse
-from typing import List, Any, Optional, Union, Dict
-from pydantic import BaseModel
-from lightrag import LightRAG, QueryParam
-from lightrag.types import GPTKeywordExtractionFormat
-from lightrag.api import __api_version__
-from lightrag.utils import EmbeddingFunc
+import configparser
+import json
+import logging
+import os
+import re
+import shutil
+import sys
+import threading
+from contextlib import asynccontextmanager
 from enum import Enum
 from pathlib import Path
-import shutil
+from typing import Any, Dict, List, Optional, Union
+
 import aiofiles
-from ascii_colors import trace_exception, ASCIIColors
-import sys
-import configparser
-from fastapi import Depends, Security
-from fastapi.security import APIKeyHeader
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from starlette.status import HTTP_403_FORBIDDEN
 import pipmaster as pm
+from ascii_colors import ASCIIColors, trace_exception
 from dotenv import load_dotenv
-from .ollama_api import (
-    OllamaAPI,
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Security,
+    UploadFile,
 )
-from .ollama_api import ollama_server_infos
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import APIKeyHeader
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
+from starlette.status import HTTP_403_FORBIDDEN
+
+from lightrag import LightRAG, QueryParam
+from lightrag.api import __api_version__
+from lightrag.types import GPTKeywordExtractionFormat
+from lightrag.utils import EmbeddingFunc
+
+from .ollama_api import OllamaAPI, ollama_server_infos
 
 # Load environment variables
 load_dotenv()
@@ -167,12 +167,14 @@ def display_splash_screen(args: argparse.Namespace) -> None:
         args: Parsed command line arguments
     """
     # Banner
-    ASCIIColors.cyan(f"""
+    ASCIIColors.cyan(
+        f"""
     ╔══════════════════════════════════════════════════════════════╗
     ║                   🚀 LightRAG Server v{__api_version__}                  ║
     ║          Fast, Lightweight RAG Server Implementation         ║
     ╚══════════════════════════════════════════════════════════════╝
-    """)
+    """
+    )
 
     # Server Configuration
     ASCIIColors.magenta("\n📡 Server Configuration:")
@@ -262,13 +264,15 @@ def display_splash_screen(args: argparse.Namespace) -> None:
         ASCIIColors.yellow(f"{protocol}://localhost:{args.port}/redoc")
 
         ASCIIColors.yellow("\n📝 Note:")
-        ASCIIColors.white("""    Since the server is running on 0.0.0.0:
+        ASCIIColors.white(
+            """    Since the server is running on 0.0.0.0:
     - Use 'localhost' or '127.0.0.1' for local access
     - Use your machine's IP address for remote access
     - To find your IP address:
       • Windows: Run 'ipconfig' in terminal
       • Linux/Mac: Run 'ifconfig' or 'ip addr' in terminal
-    """)
+    """
+        )
     else:
         base_url = f"{protocol}://{args.host}:{args.port}"
         ASCIIColors.magenta("\n🌐 Server Access Information:")
@@ -281,19 +285,24 @@ def display_splash_screen(args: argparse.Namespace) -> None:
 
     # Usage Examples
     ASCIIColors.magenta("\n📚 Quick Start Guide:")
-    ASCIIColors.cyan("""
+    ASCIIColors.cyan(
+        """
     1. Access the Swagger UI:
        Open your browser and navigate to the API documentation URL above
 
-    2. API Authentication:""")
+    2. API Authentication:"""
+    )
     if args.key:
-        ASCIIColors.cyan("""       Add the following header to your requests:
+        ASCIIColors.cyan(
+            """       Add the following header to your requests:
        X-API-Key: <your-api-key>
-    """)
+    """
+        )
     else:
         ASCIIColors.cyan("       No authentication required\n")
 
-    ASCIIColors.cyan("""    3. Basic Operations:
+    ASCIIColors.cyan(
+        """    3. Basic Operations:
        - POST /upload_document: Upload new documents to RAG
        - POST /query: Query your document collection
        - GET /collections: List available collections
@@ -301,14 +310,17 @@ def display_splash_screen(args: argparse.Namespace) -> None:
     4. Monitor the server:
        - Check server logs for detailed operation information
        - Use healthcheck endpoint: GET /health
-    """)
+    """
+    )
 
     # Security Notice
     if args.key:
         ASCIIColors.yellow("\n⚠️  Security Notice:")
-        ASCIIColors.white("""    API Key authentication is enabled.
+        ASCIIColors.white(
+            """    API Key authentication is enabled.
     Make sure to include the X-API-Key header in all your requests.
-    """)
+    """
+        )
 
     ASCIIColors.green("Server is ready to accept connections! 🚀\n")
 
@@ -712,10 +724,12 @@ def create_app(args):
     # Initialize FastAPI
     app = FastAPI(
         title="LightRAG API",
-        description="API for querying text using LightRAG with separate storage and input directories"
-        + "(With authentication)"
-        if api_key
-        else "",
+        description=(
+            "API for querying text using LightRAG with separate storage and input directories"
+            + "(With authentication)"
+            if api_key
+            else ""
+        ),
         version=__api_version__,
         openapi_tags=[{"name": "api"}],
         lifespan=lifespan,
@@ -736,9 +750,9 @@ def create_app(args):
     # Create working directory if it doesn't exist
     Path(args.working_dir).mkdir(parents=True, exist_ok=True)
     if args.llm_binding == "lollms" or args.embedding_binding == "lollms":
-        from lightrag.llm.lollms import lollms_model_complete, lollms_embed
+        from lightrag.llm.lollms import lollms_embed, lollms_model_complete
     if args.llm_binding == "ollama" or args.embedding_binding == "ollama":
-        from lightrag.llm.ollama import ollama_model_complete, ollama_embed
+        from lightrag.llm.ollama import ollama_embed, ollama_model_complete
     if args.llm_binding == "openai" or args.embedding_binding == "openai":
         from lightrag.llm.openai import openai_complete_if_cache, openai_embed
     if args.llm_binding == "azure_openai" or args.embedding_binding == "azure_openai":
@@ -747,8 +761,8 @@ def create_app(args):
             azure_openai_embed,
         )
     if args.llm_binding_host == "openai-ollama" or args.embedding_binding == "ollama":
-        from lightrag.llm.openai import openai_complete_if_cache
         from lightrag.llm.ollama import ollama_embed
+        from lightrag.llm.openai import openai_complete_if_cache
 
     async def openai_alike_model_complete(
         prompt,
@@ -798,30 +812,36 @@ def create_app(args):
     embedding_func = EmbeddingFunc(
         embedding_dim=args.embedding_dim,
         max_token_size=args.max_embed_tokens,
-        func=lambda texts: lollms_embed(
-            texts,
-            embed_model=args.embedding_model,
-            host=args.embedding_binding_host,
-            api_key=args.embedding_binding_api_key,
-        )
-        if args.embedding_binding == "lollms"
-        else ollama_embed(
-            texts,
-            embed_model=args.embedding_model,
-            host=args.embedding_binding_host,
-            api_key=args.embedding_binding_api_key,
-        )
-        if args.embedding_binding == "ollama"
-        else azure_openai_embed(
-            texts,
-            model=args.embedding_model,  # no host is used for openai,
-            api_key=args.embedding_binding_api_key,
-        )
-        if args.embedding_binding == "azure_openai"
-        else openai_embed(
-            texts,
-            model=args.embedding_model,  # no host is used for openai,
-            api_key=args.embedding_binding_api_key,
+        func=lambda texts: (
+            lollms_embed(
+                texts,
+                embed_model=args.embedding_model,
+                host=args.embedding_binding_host,
+                api_key=args.embedding_binding_api_key,
+            )
+            if args.embedding_binding == "lollms"
+            else (
+                ollama_embed(
+                    texts,
+                    embed_model=args.embedding_model,
+                    host=args.embedding_binding_host,
+                    api_key=args.embedding_binding_api_key,
+                )
+                if args.embedding_binding == "ollama"
+                else (
+                    azure_openai_embed(
+                        texts,
+                        model=args.embedding_model,  # no host is used for openai,
+                        api_key=args.embedding_binding_api_key,
+                    )
+                    if args.embedding_binding == "azure_openai"
+                    else openai_embed(
+                        texts,
+                        model=args.embedding_model,  # no host is used for openai,
+                        api_key=args.embedding_binding_api_key,
+                    )
+                )
+            )
         ),
     )
 
@@ -829,24 +849,30 @@ def create_app(args):
     if args.llm_binding in ["lollms", "ollama", "openai-ollama"]:
         rag = LightRAG(
             working_dir=args.working_dir,
-            llm_model_func=lollms_model_complete
-            if args.llm_binding == "lollms"
-            else ollama_model_complete
-            if args.llm_binding == "ollama"
-            else openai_alike_model_complete,
+            llm_model_func=(
+                lollms_model_complete
+                if args.llm_binding == "lollms"
+                else (
+                    ollama_model_complete
+                    if args.llm_binding == "ollama"
+                    else openai_alike_model_complete
+                )
+            ),
             llm_model_name=args.llm_model,
             llm_model_max_async=args.max_async,
             llm_model_max_token_size=args.max_tokens,
             chunk_token_size=int(args.chunk_size),
             chunk_overlap_token_size=int(args.chunk_overlap_size),
-            llm_model_kwargs={
-                "host": args.llm_binding_host,
-                "timeout": args.timeout,
-                "options": {"num_ctx": args.max_tokens},
-                "api_key": args.llm_binding_api_key,
-            }
-            if args.llm_binding == "lollms" or args.llm_binding == "ollama"
-            else {},
+            llm_model_kwargs=(
+                {
+                    "host": args.llm_binding_host,
+                    "timeout": args.timeout,
+                    "options": {"num_ctx": args.max_tokens},
+                    "api_key": args.llm_binding_api_key,
+                }
+                if args.llm_binding == "lollms" or args.llm_binding == "ollama"
+                else {}
+            ),
             embedding_func=embedding_func,
             kv_storage=rag_storage_config.KV_STORAGE,
             graph_storage=rag_storage_config.GRAPH_STORAGE,
@@ -865,9 +891,11 @@ def create_app(args):
     else:
         rag = LightRAG(
             working_dir=args.working_dir,
-            llm_model_func=azure_openai_model_complete
-            if args.llm_binding == "azure_openai"
-            else openai_alike_model_complete,
+            llm_model_func=(
+                azure_openai_model_complete
+                if args.llm_binding == "azure_openai"
+                else openai_alike_model_complete
+            ),
             chunk_token_size=int(args.chunk_size),
             chunk_overlap_token_size=int(args.chunk_overlap_size),
             llm_model_kwargs={
@@ -1288,8 +1316,9 @@ def create_app(args):
                         case ".pdf":
                             if not pm.is_installed("pypdf2"):
                                 pm.install("pypdf2")
-                            from PyPDF2 import PdfReader
                             from io import BytesIO
+
+                            from PyPDF2 import PdfReader
 
                             pdf_content = await file.read()
                             pdf_file = BytesIO(pdf_content)
@@ -1300,8 +1329,9 @@ def create_app(args):
                         case ".docx":
                             if not pm.is_installed("docx"):
                                 pm.install("docx")
-                            from docx import Document
                             from io import BytesIO
+
+                            from docx import Document
 
                             docx_content = await file.read()
                             docx_file = BytesIO(docx_content)
@@ -1313,8 +1343,9 @@ def create_app(args):
                         case ".pptx":
                             if not pm.is_installed("pptx"):
                                 pm.install("pptx")
-                            from pptx import Presentation  # type: ignore
                             from io import BytesIO
+
+                            from pptx import Presentation  # type: ignore
 
                             pptx_content = await file.read()
                             pptx_file = BytesIO(pptx_content)

@@ -37,9 +37,11 @@ class RedisKVStorage(BaseKVStorage):
         if fields:
             # Filter fields if specified
             return [
-                {field: value.get(field) for field in fields if field in value}
-                if (value := json.loads(result))
-                else None
+                (
+                    {field: value.get(field) for field in fields if field in value}
+                    if (value := json.loads(result))
+                    else None
+                )
                 for result in results
             ]
 

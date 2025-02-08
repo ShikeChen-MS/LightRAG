@@ -154,13 +154,19 @@ class LightRAG:
     )
 
     # embedding_func: EmbeddingFunc = field(default_factory=lambda:hf_embedding)
-    embedding_func: EmbeddingFunc = None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
+    embedding_func: EmbeddingFunc = (
+        None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
+    )
     embedding_batch_num: int = 32
     embedding_func_max_async: int = 16
 
     # LLM
-    llm_model_func: callable = None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
-    llm_model_name: str = "meta-llama/Llama-3.2-1B-Instruct"  # 'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
+    llm_model_func: callable = (
+        None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
+    )
+    llm_model_name: str = (
+        "meta-llama/Llama-3.2-1B-Instruct"  # 'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
+    )
     llm_model_max_token_size: int = int(os.getenv("MAX_TOKENS", "32768"))
     llm_model_max_async: int = int(os.getenv("MAX_ASYNC", "16"))
     llm_model_kwargs: dict = field(default_factory=dict)
@@ -924,13 +930,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
                 prompt=prompt,
             )
@@ -941,13 +949,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         elif param.mode == "mix":
@@ -960,13 +970,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         else:
@@ -1032,13 +1044,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_funcne,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_funcne,
+                    )
                 ),
             )
         elif param.mode == "naive":
@@ -1048,13 +1062,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         elif param.mode == "mix":
@@ -1067,13 +1083,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         else:

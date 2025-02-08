@@ -769,7 +769,10 @@ class PGGraphStorage(BaseGraphStorage):
         query = """SELECT * FROM cypher('%s', $$
                      MATCH (n:Entity {node_id: "%s"})
                      RETURN count(n) > 0 AS node_exists
-                   $$) AS (node_exists bool)""" % (self.graph_name, entity_name_label)
+                   $$) AS (node_exists bool)""" % (
+            self.graph_name,
+            entity_name_label,
+        )
 
         single_result = (await self._query(query))[0]
         logger.debug(
@@ -808,7 +811,10 @@ class PGGraphStorage(BaseGraphStorage):
         query = """SELECT * FROM cypher('%s', $$
                      MATCH (n:Entity {node_id: "%s"})
                      RETURN n
-                   $$) AS (n agtype)""" % (self.graph_name, label)
+                   $$) AS (n agtype)""" % (
+            self.graph_name,
+            label,
+        )
         record = await self._query(query)
         if record:
             node = record[0]
@@ -828,7 +834,10 @@ class PGGraphStorage(BaseGraphStorage):
         query = """SELECT * FROM cypher('%s', $$
                      MATCH (n:Entity {node_id: "%s"})-[]->(x)
                      RETURN count(x) AS total_edge_count
-                   $$) AS (total_edge_count integer)""" % (self.graph_name, label)
+                   $$) AS (total_edge_count integer)""" % (
+            self.graph_name,
+            label,
+        )
         record = (await self._query(query))[0]
         if record:
             edge_count = int(record["total_edge_count"])

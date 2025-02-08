@@ -286,15 +286,21 @@ def xml_to_json(xml_file):
         for node in root.findall(".//node", namespace):
             node_data = {
                 "id": node.get("id").strip('"'),
-                "entity_type": node.find("./data[@key='d0']", namespace).text.strip('"')
-                if node.find("./data[@key='d0']", namespace) is not None
-                else "",
-                "description": node.find("./data[@key='d1']", namespace).text
-                if node.find("./data[@key='d1']", namespace) is not None
-                else "",
-                "source_id": node.find("./data[@key='d2']", namespace).text
-                if node.find("./data[@key='d2']", namespace) is not None
-                else "",
+                "entity_type": (
+                    node.find("./data[@key='d0']", namespace).text.strip('"')
+                    if node.find("./data[@key='d0']", namespace) is not None
+                    else ""
+                ),
+                "description": (
+                    node.find("./data[@key='d1']", namespace).text
+                    if node.find("./data[@key='d1']", namespace) is not None
+                    else ""
+                ),
+                "source_id": (
+                    node.find("./data[@key='d2']", namespace).text
+                    if node.find("./data[@key='d2']", namespace) is not None
+                    else ""
+                ),
             }
             data["nodes"].append(node_data)
 
@@ -302,18 +308,26 @@ def xml_to_json(xml_file):
             edge_data = {
                 "source": edge.get("source").strip('"'),
                 "target": edge.get("target").strip('"'),
-                "weight": float(edge.find("./data[@key='d3']", namespace).text)
-                if edge.find("./data[@key='d3']", namespace) is not None
-                else 0.0,
-                "description": edge.find("./data[@key='d4']", namespace).text
-                if edge.find("./data[@key='d4']", namespace) is not None
-                else "",
-                "keywords": edge.find("./data[@key='d5']", namespace).text
-                if edge.find("./data[@key='d5']", namespace) is not None
-                else "",
-                "source_id": edge.find("./data[@key='d6']", namespace).text
-                if edge.find("./data[@key='d6']", namespace) is not None
-                else "",
+                "weight": (
+                    float(edge.find("./data[@key='d3']", namespace).text)
+                    if edge.find("./data[@key='d3']", namespace) is not None
+                    else 0.0
+                ),
+                "description": (
+                    edge.find("./data[@key='d4']", namespace).text
+                    if edge.find("./data[@key='d4']", namespace) is not None
+                    else ""
+                ),
+                "keywords": (
+                    edge.find("./data[@key='d5']", namespace).text
+                    if edge.find("./data[@key='d5']", namespace) is not None
+                    else ""
+                ),
+                "source_id": (
+                    edge.find("./data[@key='d6']", namespace).text
+                    if edge.find("./data[@key='d6']", namespace) is not None
+                    else ""
+                ),
             }
             data["edges"].append(edge_data)
 
@@ -431,12 +445,16 @@ async def get_best_cached_response(
                 if best_similarity < similarity_threshold:
                     log_data = {
                         "event": "llm_check_cache_rejected",
-                        "original_question": original_prompt[:100] + "..."
-                        if len(original_prompt) > 100
-                        else original_prompt,
-                        "cached_question": best_prompt[:100] + "..."
-                        if len(best_prompt) > 100
-                        else best_prompt,
+                        "original_question": (
+                            original_prompt[:100] + "..."
+                            if len(original_prompt) > 100
+                            else original_prompt
+                        ),
+                        "cached_question": (
+                            best_prompt[:100] + "..."
+                            if len(best_prompt) > 100
+                            else best_prompt
+                        ),
                         "similarity_score": round(best_similarity, 4),
                         "threshold": similarity_threshold,
                     }
@@ -577,12 +595,14 @@ async def save_to_cache(hashing_kv, cache_data: CacheData):
     mode_cache[cache_data.args_hash] = {
         "return": cache_data.content,
         "cache_type": cache_data.cache_type,
-        "embedding": cache_data.quantized.tobytes().hex()
-        if cache_data.quantized is not None
-        else None,
-        "embedding_shape": cache_data.quantized.shape
-        if cache_data.quantized is not None
-        else None,
+        "embedding": (
+            cache_data.quantized.tobytes().hex()
+            if cache_data.quantized is not None
+            else None
+        ),
+        "embedding_shape": (
+            cache_data.quantized.shape if cache_data.quantized is not None else None
+        ),
         "embedding_min": cache_data.min_val,
         "embedding_max": cache_data.max_val,
         "original_prompt": cache_data.prompt,
