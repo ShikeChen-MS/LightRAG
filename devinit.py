@@ -80,6 +80,7 @@ if __name__ == "__main__":
     requirements_file = "requirements.txt"
     requirements_file2 = "./lightrag/api/requirements.txt"
     requirements_file3 = "./lightrag/tools/lightrag_visualizer/requirements.txt"
+    requirements_file4 = "./devrequirements.txt"
 
     create_venv(venv_name)
     req_install = True
