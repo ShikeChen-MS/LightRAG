@@ -10,3 +10,9 @@ aiofiles
 docling
 pypdf2
 aioboto3
+psycopg-pool
+psycopg[binary,pool]
+asyncpg
+pymongo
+motor
+nano-vectordb
