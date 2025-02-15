@@ -95,6 +95,7 @@ def chunking_by_token_size(
 
 async def _handle_entity_relation_summary(
     entity_or_relation_name: str,
+    azure_ad_token: str,
     description: str,
     global_config: dict,
 ) -> str:
@@ -124,7 +125,9 @@ async def _handle_entity_relation_summary(
     )
     use_prompt = prompt_template.format(**context_base)
     logger.debug(f"Trigger summary: {entity_or_relation_name}")
-    summary = await use_llm_func(use_prompt, max_tokens=summary_max_tokens)
+    summary = await use_llm_func(
+        use_prompt, azure_ad_token=azure_ad_token, max_tokens=summary_max_tokens
+    )
     return summary
 
 
@@ -228,6 +231,7 @@ async def _merge_edges_then_upsert(
     src_id: str,
     tgt_id: str,
     edges_data: list[dict],
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
 ):
@@ -268,7 +272,10 @@ async def _merge_edges_then_upsert(
                 },
             )
     description = await _handle_entity_relation_summary(
-        f"({src_id}, {tgt_id})", description, global_config
+        f"({src_id}, {tgt_id})",
+        azure_ad_token,
+        description,
+        global_config,
     )
     await knowledge_graph_inst.upsert_edge(
         src_id,
@@ -297,6 +304,7 @@ async def extract_entities(
     entity_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
     global_config: dict,
+    azure_ad_token: str,
     llm_response_cache: BaseKVStorage = None,
 ) -> Union[BaseGraphStorage, None]:
     use_llm_func: callable = global_config["llm_model_func"]
@@ -349,7 +357,7 @@ async def extract_entities(
     already_relations = 0
 
     async def _user_llm_func_with_cache(
-        input_text: str, history_messages: list[dict[str, str]] = None
+        input_text: str, aad_token: str, history_messages: list[dict[str, str]] = None
     ) -> str:
         if enable_llm_cache_for_entity_extract and llm_response_cache:
             if history_messages:
@@ -374,10 +382,12 @@ async def extract_entities(
             statistic_data["llm_call"] += 1
             if history_messages:
                 res: str = await use_llm_func(
-                    input_text, history_messages=history_messages
+                    input_text,
+                    azure_ad_token=aad_token,
+                    history_messages=history_messages,
                 )
             else:
-                res: str = await use_llm_func(input_text)
+                res: str = await use_llm_func(input_text, azure_ad_token=aad_token)
             await save_to_cache(
                 llm_response_cache,
                 CacheData(
@@ -390,11 +400,15 @@ async def extract_entities(
             return res
 
         if history_messages:
-            return await use_llm_func(input_text, history_messages=history_messages)
+            return await use_llm_func(
+                input_text, azure_ad_token=aad_token, history_messages=history_messages
+            )
         else:
-            return await use_llm_func(input_text)
+            return await use_llm_func(input_text, azure_ad_token=aad_token)
 
-    async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
+    async def _process_single_content(
+        chunk_key_dp: tuple[str, TextChunkSchema], aad_token: str
+    ):
         """ "Prpocess a single chunk
         Args:
             chunk_key_dp (tuple[str, TextChunkSchema]):
@@ -409,11 +423,15 @@ async def extract_entities(
             **context_base, input_text="{input_text}"
         ).format(**context_base, input_text=content)
 
-        final_result = await _user_llm_func_with_cache(hint_prompt)
+        final_result = await _user_llm_func_with_cache(
+            input_text=hint_prompt, aad_token=aad_token
+        )
         history = pack_user_ass_to_openai_messages(hint_prompt, final_result)
         for now_glean_index in range(entity_extract_max_gleaning):
             glean_result = await _user_llm_func_with_cache(
-                continue_prompt, history_messages=history
+                input_text=continue_prompt,
+                aad_token=aad_token,
+                history_messages=history,
             )
 
             history += pack_user_ass_to_openai_messages(continue_prompt, glean_result)
@@ -422,7 +440,7 @@ async def extract_entities(
                 break
 
             if_loop_result: str = await _user_llm_func_with_cache(
-                if_loop_prompt, history_messages=history
+                input_text=if_loop_prompt, aad_token=aad_token, history_messages=history
             )
             if_loop_result = if_loop_result.strip().strip('"').strip("'").lower()
             if if_loop_result != "yes":
@@ -470,7 +488,9 @@ async def extract_entities(
 
     results = []
     for result in tqdm_async(
-        asyncio.as_completed([_process_single_content(c) for c in ordered_chunks]),
+        asyncio.as_completed(
+            [_process_single_content(c, azure_ad_token) for c in ordered_chunks]
+        ),
         total=len(ordered_chunks),
         desc="Level 2 - Extracting entities and relationships",
         unit="chunk",
@@ -509,7 +529,7 @@ async def extract_entities(
         asyncio.as_completed(
             [
                 _merge_edges_then_upsert(
-                    k[0], k[1], v, knowledge_graph_inst, global_config
+                    k[0], k[1], v, azure_ad_token, knowledge_graph_inst, global_config
                 )
                 for k, v in maybe_edges.items()
             ]
@@ -571,6 +591,7 @@ async def kg_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    azure_ad_token: str,
     hashing_kv: BaseKVStorage = None,
     prompt: str = "",
 ) -> str:
@@ -648,6 +669,7 @@ async def kg_query(
 
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
         stream=query_param.stream,
     )
@@ -774,6 +796,7 @@ async def extract_keywords_only(
 
 async def mix_kg_vector_query(
     query: str,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -933,6 +956,7 @@ async def mix_kg_vector_query(
     # 6. Generate response
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
         stream=query_param.stream,
     )
@@ -1502,6 +1526,7 @@ async def naive_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    azure_ad_token: str,
     hashing_kv: BaseKVStorage = None,
 ):
     # Handle cache
@@ -1564,6 +1589,7 @@ async def naive_query(
 
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
     )
 
@@ -1599,6 +1625,7 @@ async def naive_query(
 
 async def kg_query_with_keywords(
     query: str,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -1706,6 +1733,7 @@ async def kg_query_with_keywords(
 
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
         stream=query_param.stream,
     )

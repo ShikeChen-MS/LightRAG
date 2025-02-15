@@ -4,15 +4,3 @@ black[jupyter]
 # Following packages are installed by pipmaster at runtime
 # For purpose of development (IDE analysis, highlight etc.),
 # they are installed here
-openai
-tenacity
-aiofiles
-docling
-pypdf2
-aioboto3
-psycopg-pool
-psycopg[binary,pool]
-asyncpg
-pymongo
-motor
-nano-vectordb

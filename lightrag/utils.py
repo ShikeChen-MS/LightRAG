@@ -6,16 +6,15 @@ import json
 import logging
 import os
 import re
+import hashlib
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
-from typing import Any, Union, List, Optional
+from typing import Callable, Awaitable, Any, Union, List, Optional
 import xml.etree.ElementTree as ET
 import bs4
-
 import numpy as np
 import tiktoken
-
 from lightrag.prompt import PROMPTS
 
 
@@ -58,7 +57,7 @@ def set_logger(log_file: str):
 class EmbeddingFunc:
     embedding_dim: int
     max_token_size: int
-    func: callable
+    func: Callable[[list[str], str], Awaitable[np.ndarray]]
     # concurrent_limit: int = 16
 
     async def __call__(self, *args, **kwargs) -> np.ndarray:
@@ -117,8 +116,6 @@ def compute_args_hash(*args, cache_type: str = None) -> str:
     Returns:
         str: Hash string
     """
-    import hashlib
-
     # Convert all arguments to strings and join them
     args_str = "".join([str(arg) for arg in args])
     if cache_type:

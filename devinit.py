@@ -7,7 +7,7 @@ import venv
 
 def check_python_version():
     """
-    Check Python version to ensure it is 3.3 or higher.
+    Check Python version to ensure it is 3.11 or higher.
     """
     if sys.version_info[0] < 3 or (
         sys.version_info[0] == 3 and sys.version_info[1] < 11
@@ -22,7 +22,7 @@ def create_venv(venv_name: str, skip_pip=False):
     """
     Creating a virtual environment with the given name and Python version.
     :param venv_name: desired name of the virtual environment
-    :param python_version: desired Python version (3.3 or higher)
+    :param python_version: desired Python version (3.11 or higher)
     """
     print(f"Creating virtual environment '{venv_name}'...")
     if platform.system() == "Windows":
@@ -88,17 +88,18 @@ if __name__ == "__main__":
         if check_file_existence(requirements_file):
             install_requirements(venv_name, requirements_file)
         else:
-            req_install = False
+            print(f"Requirements file '{requirements_file}' not found. Exiting.")
+            sys.exit(1)
         if check_file_existence(requirements_file2):
             install_requirements(venv_name, requirements_file2)
         else:
-            req_install = False
+            print(f"Requirements file '{requirements_file2}' not found. Exiting.")
+            sys.exit(1)
         if check_file_existence(requirements_file3):
             install_requirements(venv_name, requirements_file3)
         else:
-            req_install = False
+            print(f"Requirements file '{requirements_file3}' not found. Exiting.")
+            sys.exit(1)
         if req_install:
             print("All requirements installed successfully.")
             sys.exit(0)
-        print(f"Requirements file '{requirements_file}' not found. Exiting.")
-        sys.exit(1)
