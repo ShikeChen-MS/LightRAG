@@ -18,6 +18,7 @@ graspologic
 
 # database packages
 networkx
+nano-vectordb
 
 # Basic modules
 numpy

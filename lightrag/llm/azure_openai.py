@@ -97,6 +97,7 @@ async def azure_openai_complete_if_cache(
         messages.append({"role": "user", "content": prompt})
 
     if "response_format" in kwargs:
+        # This requires GPT-4o model with version 2024-08-06 and later
         response = await openai_async_client.beta.chat.completions.parse(
             model=model, messages=messages, **kwargs
         )

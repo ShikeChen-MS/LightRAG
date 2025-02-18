@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -101,8 +102,8 @@ def create_app(args, rag_storage_config):
     async def azure_openai_model_complete(
         prompt,
         azure_ad_token,
-        system_prompt,
-        history_messages,
+        system_prompt=None,
+        history_messages=[],
         **kwargs,
     ):
         keyword_extraction = kwargs.pop("keyword_extraction", None)
@@ -125,8 +126,8 @@ def create_app(args, rag_storage_config):
         texts: list[str], azure_ad_token: str
     ) -> np.ndarray:
         return await az_openai.azure_openai_embed(
-            texts,
-            azure_ad_token,
+            texts=texts,
+            azure_ad_token=azure_ad_token,
             model=args.embedding_model,
             endpoint=args.embedding_binding_host,
             api_version=args.embedding_api_version,
@@ -188,10 +189,6 @@ def create_app(args, rag_storage_config):
             ValueError: If file format is not supported
             FileNotFoundError: If file doesn't exist
         """
-        try:
-            az_ad_token = server_util.extract_token_value(azure_ad_token)
-        except:
-            raise
         # Convert to Path object if string
         file_path = Path(file_path)
 
@@ -210,16 +207,22 @@ def create_app(args, rag_storage_config):
                     content = await f.read()
 
             case ".pdf" | ".docx" | ".pptx" | ".xlsx":
-                converter = DocumentConverter()
-                result = converter.convert(file_path)
-                content = result.document.export_to_markdown()
+                async def convert_doc():
+                    def sync_convert():
+                        converter = DocumentConverter()
+                        result = converter.convert(file_path)
+                        return result.document.export_to_markdown()
+
+                    return await asyncio.to_thread(sync_convert)
+
+                content = await convert_doc()
 
             case _:
                 raise ValueError(f"Unsupported file format: {ext}")
 
         # Insert content into RAG system
         if content:
-            await rag.ainsert(content, azure_ad_token=az_ad_token)
+            await rag.ainsert(content, azure_ad_token=azure_ad_token)
             doc_manager.mark_as_indexed(file_path)
             logging.info(f"Successfully indexed file: {file_path}")
         else:

@@ -53,10 +53,6 @@ import os
 from tqdm.asyncio import tqdm as tqdm_async
 from dataclasses import dataclass
 import numpy as np
-import pipmaster as pm
-
-if not pm.is_installed("nano-vectordb"):
-    pm.install("nano-vectordb")
 
 from nano_vectordb import NanoVectorDB
 import time
@@ -92,7 +88,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             self.embedding_func.embedding_dim, storage_file=self._client_file_name
         )
 
-    async def upsert(self, data: dict[str, dict]):
+    async def upsert(self, data: dict[str, dict], azure_ad_token: str):
         logger.info(f"Inserting {len(data)} vectors to {self.namespace}")
         if not len(data):
             logger.warning("You insert an empty data to vector DB")
@@ -114,7 +110,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
         ]
 
         async def wrapped_task(batch):
-            result = await self.embedding_func(batch)
+            result = await self.embedding_func(batch, azure_ad_token=azure_ad_token)
             pbar.update(1)
             return result
 
@@ -136,8 +132,8 @@ class NanoVectorDBStorage(BaseVectorStorage):
                 f"embedding is not 1-1 with data, {len(embeddings)} != {len(list_data)}"
             )
 
-    async def query(self, query: str, top_k=5):
-        embedding = await self.embedding_func([query])
+    async def query(self, query: str, azure_ad_token: str, top_k=5):
+        embedding = await self.embedding_func([query], azure_ad_token=azure_ad_token)
         embedding = embedding[0]
         logger.info(
             f"Query: {query}, top_k: {top_k}, cosine: {self.cosine_better_than_threshold}"

@@ -4,9 +4,6 @@
     <option name="ENV_FILES" value="$PROJECT_DIR$/lightrag/api/.env" />
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
-    <envs>
-      <env name="PYTHONUNBUFFERED" value="1" />
-    </envs>
     <option name="SDK_HOME" value="" />
     <option name="SDK_NAME" value="Python 3.12 virtualenv at D:\LightRAG\.venv" />
     <option name="WORKING_DIRECTORY" value="D:\LightRAG" />
@@ -21,8 +18,6 @@
     <option name="MODULE_MODE" value="true" />
     <option name="REDIRECT_INPUT" value="false" />
     <option name="INPUT_FILE" value="" />
-    <method v="2">
-      <option name="ToolBeforeRunTask" enabled="true" actionId="Tool_External Tools_Build LightRag" />
-    </method>
+    <method v="2" />
   </configuration>
 </component>

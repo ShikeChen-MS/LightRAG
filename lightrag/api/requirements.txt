@@ -9,6 +9,7 @@ pipmaster
 python-dotenv
 python-multipart
 pypdf2
+nano-vectordb
 tenacity
 tiktoken
 torch

@@ -513,6 +513,7 @@ async def handle_cache(
     hashing_kv,
     args_hash,
     prompt,
+    azure_ad_token,
     mode="default",
     cache_type=None,
     force_llm_cache=False,
@@ -535,7 +536,7 @@ async def handle_cache(
         quantized = min_val = max_val = None
         if is_embedding_cache_enabled:
             # Use embedding cache
-            current_embedding = await hashing_kv.embedding_func([prompt])
+            current_embedding = await hashing_kv.embedding_func([prompt], azure_ad_token)
             llm_model_func = hashing_kv.global_config.get("llm_model_func")
             quantized, min_val, max_val = quantize_embedding(current_embedding[0])
             best_cached_response = await get_best_cached_response(
