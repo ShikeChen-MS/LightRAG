@@ -207,6 +207,7 @@ def create_app(args, rag_storage_config):
                     content = await f.read()
 
             case ".pdf" | ".docx" | ".pptx" | ".xlsx":
+
                 async def convert_doc():
                     def sync_convert():
                         converter = DocumentConverter()

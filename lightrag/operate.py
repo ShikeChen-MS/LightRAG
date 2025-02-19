@@ -512,7 +512,9 @@ async def extract_entities(
     for result in tqdm_async(
         asyncio.as_completed(
             [
-                _merge_nodes_then_upsert(k, v, azure_ad_token, knowledge_graph_inst, global_config)
+                _merge_nodes_then_upsert(
+                    k, v, azure_ad_token, knowledge_graph_inst, global_config
+                )
                 for k, v in maybe_nodes.items()
             ]
         ),
@@ -600,7 +602,12 @@ async def kg_query(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash(query_param.mode, query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, query, azure_ad_token, query_param.mode, cache_type="query"
+        hashing_kv,
+        args_hash,
+        query,
+        azure_ad_token,
+        query_param.mode,
+        cache_type="query",
     )
     if cached_response is not None:
         return cached_response
@@ -1093,7 +1100,7 @@ async def _get_node_data(
     query_param: QueryParam,
 ):
     # get similar entities
-    results = await entities_vdb.query(query, azure_ad_token,top_k=query_param.top_k)
+    results = await entities_vdb.query(query, azure_ad_token, top_k=query_param.top_k)
     if not len(results):
         return "", "", ""
     # get entity information
@@ -1309,7 +1316,9 @@ async def _get_edge_data(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
 ):
-    results = await relationships_vdb.query(keywords, azure_ad_token, top_k=query_param.top_k)
+    results = await relationships_vdb.query(
+        keywords, azure_ad_token, top_k=query_param.top_k
+    )
 
     if not len(results):
         return "", "", ""
