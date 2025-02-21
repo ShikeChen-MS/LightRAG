@@ -2,6 +2,7 @@ accelerate
 aiofiles
 aiohttp
 configparser
+cachetools
 ascii_colors
 fastapi
 nest_asyncio
@@ -19,6 +20,7 @@ graspologic
 # database packages
 networkx
 nano-vectordb
+asyncpg
 
 # Basic modules
 numpy

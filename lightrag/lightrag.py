@@ -1,6 +1,8 @@
 import asyncio
 import os
 import tracemalloc
+import inspect
+import importlib
 from tqdm.asyncio import tqdm as tqdm_async
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -66,15 +68,12 @@ def lazy_external_import(module_name: str, class_name: str):
     """Lazily import a class from an external module based on the package of the caller."""
 
     # Get the caller's module and package
-    import inspect
 
     caller_frame = inspect.currentframe().f_back
     module = inspect.getmodule(caller_frame)
     package = module.__package__ if module else None
 
     def import_class(*args, **kwargs):
-        import importlib
-
         module = importlib.import_module(module_name, package=package)
         cls = getattr(module, class_name)
         return cls(*args, **kwargs)

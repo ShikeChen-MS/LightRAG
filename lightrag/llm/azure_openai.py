@@ -40,37 +40,45 @@ __version__ = "1.0.0"
 __author__ = "lightrag Team"
 __status__ = "Production"
 
-
-import os
-from typing import AsyncGenerator, Union
-
-from openai import (
-    AsyncAzureOpenAI,
-    APIConnectionError,
-    RateLimitError,
-    APITimeoutError,
-)
+import openai as openai
+import numpy as np
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
     retry_if_exception_type,
 )
-
 from lightrag.utils import (
     wrap_embedding_func_with_attrs,
     locate_json_string_body_from_string,
     safe_unicode_decode,
 )
 
-import numpy as np
+
+
+def check_model_version(
+    model_name: str, endpoint: str, azure_ad_token: str, api_version: str
+) -> dict:
+    openai.api_base = endpoint
+    openai.api_key = azure_ad_token
+    openai.api_version = api_version
+
+    try:
+        response = openai.Model.retrieve(model_name)
+        return {
+            "model_name": response.get("id"),
+            "created": response.get("created"),
+            "version": response.get("version"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(
-        (RateLimitError, APIConnectionError, APIConnectionError)
+        (openai.RateLimitError, openai.APIConnectionError, openai.APIConnectionError)
     ),
 )
 async def azure_openai_complete_if_cache(
@@ -83,7 +91,7 @@ async def azure_openai_complete_if_cache(
     history_messages=[],
     **kwargs,
 ):
-    openai_async_client = AsyncAzureOpenAI(
+    openai_async_client = openai.AsyncAzureOpenAI(
         azure_endpoint=endpoint,
         azure_ad_token=azure_ad_token,
         api_version=api_version,
@@ -158,7 +166,7 @@ async def azure_openai_complete(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
     retry=retry_if_exception_type(
-        (RateLimitError, APIConnectionError, APITimeoutError)
+        (openai.RateLimitError, openai.APIConnectionError, openai.APITimeoutError)
     ),
 )
 async def azure_openai_embed(
@@ -168,7 +176,7 @@ async def azure_openai_embed(
     azure_ad_token: str,
     api_version: str,
 ) -> np.ndarray:
-    openai_async_client = AsyncAzureOpenAI(
+    openai_async_client = openai.AsyncAzureOpenAI(
         azure_endpoint=endpoint,
         azure_ad_token=azure_ad_token,
         api_version=api_version,

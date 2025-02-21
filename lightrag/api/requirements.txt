@@ -1,4 +1,6 @@
 ascii_colors
+asyncpg
+cachetools
 docx
 python-pptx
 fastapi
