@@ -28,11 +28,9 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 # Copy only requirements files first to leverage Docker cache
 COPY requirements.txt .
-COPY lightrag/api/requirements.txt ./lightrag/api/
 
 # Install dependencies
 RUN pip install --user --no-cache-dir -r requirements.txt
-RUN pip install --user --no-cache-dir -r lightrag/api/requirements.txt
 
 # Final stage
 FROM python:3.12.9-slim

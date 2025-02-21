@@ -55,12 +55,11 @@ from lightrag.utils import (
 )
 
 
-
 def check_model_version(
     model_name: str, endpoint: str, azure_ad_token: str, api_version: str
 ) -> dict:
     openai.api_base = endpoint
-    openai.api_key = azure_ad_token
+    openai.azure_ad_token = azure_ad_token
     openai.api_version = api_version
 
     try:
