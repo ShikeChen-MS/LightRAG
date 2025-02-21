@@ -4,6 +4,7 @@ import uvicorn
 import lightrag.api.server_util as server_util
 import lightrag.api.server_app as server_app
 from dotenv import load_dotenv
+import lightrag.llm.azure_openai_client as azure_openai
 
 # Load environment variables
 load_dotenv()
@@ -55,6 +56,15 @@ if mongo_uri:
 # Main Function
 def main():
     args = server_util.parse_args()
+    azure_openai.AzureOpenaiClient.set_parameters(
+        llm_model=args.llm_model,
+        llm_endpoint=args.llm_binding_host,
+        llm_api_version=args.llm_api_version,
+        embedding_model=args.embedding_model,
+        embedding_endpoint=args.embedding_binding_host,
+        embedding_api_version=args.embedding_api_version,
+        embedding_dimension=args.embedding_dim,
+    )
     app = server_app.create_app(args, rag_storage_config)
     server_util.display_splash_screen(args)
     uvicorn_config = {

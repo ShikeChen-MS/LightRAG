@@ -1,6 +1,2 @@
 black
 black[jupyter]
-
-# Following packages are installed by pipmaster at runtime
-# For purpose of development (IDE analysis, highlight etc.),
-# they are installed here

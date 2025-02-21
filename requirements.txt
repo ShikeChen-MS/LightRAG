@@ -2,11 +2,11 @@ accelerate
 aiofiles
 aiohttp
 configparser
-cachetools
 ascii_colors
 fastapi
 nest_asyncio
 python-multipart
+pyjwt
 torch
 uvicorn
 
@@ -30,6 +30,7 @@ pydantic
 python-dotenv
 setuptools
 tenacity
+msal
 
 
 # LLM packages

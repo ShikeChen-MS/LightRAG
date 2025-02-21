@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from lightrag.llm.azure_openai_client import AzureOpenaiClient
 from tqdm.asyncio import tqdm as tqdm_async
 from typing import Union
 from collections import Counter, defaultdict
@@ -308,7 +309,6 @@ async def extract_entities(
     azure_ad_token: str,
     llm_response_cache: BaseKVStorage = None,
 ) -> Union[BaseGraphStorage, None]:
-    use_llm_func: callable = global_config["llm_model_func"]
     entity_extract_max_gleaning = global_config["entity_extract_max_gleaning"]
     enable_llm_cache_for_entity_extract: bool = global_config[
         "enable_llm_cache_for_entity_extract"
@@ -358,7 +358,7 @@ async def extract_entities(
     already_relations = 0
 
     async def _user_llm_func_with_cache(
-        input_text: str, aad_token: str, history_messages: list[dict[str, str]] = None
+        input_text: str, history_messages: list[dict[str, str]] = None
     ) -> str:
         if enable_llm_cache_for_entity_extract and llm_response_cache:
             if history_messages:
@@ -372,6 +372,7 @@ async def extract_entities(
                 llm_response_cache,
                 arg_hash,
                 _prompt,
+                azure_ad_token,
                 "default",
                 cache_type="extract",
                 force_llm_cache=True,
@@ -382,13 +383,15 @@ async def extract_entities(
                 return cached_return
             statistic_data["llm_call"] += 1
             if history_messages:
-                res: str = await use_llm_func(
+                res: str = await AzureOpenaiClient.azure_openai_complete_if_cache(
                     input_text,
-                    azure_ad_token=aad_token,
+                    azure_ad_token=azure_ad_token,
                     history_messages=history_messages,
                 )
             else:
-                res: str = await use_llm_func(input_text, azure_ad_token=aad_token)
+                res: str = await AzureOpenaiClient.azure_openai_complete_if_cache(
+                    input_text, azure_ad_token=azure_ad_token
+                )
             await save_to_cache(
                 llm_response_cache,
                 CacheData(
@@ -401,15 +404,17 @@ async def extract_entities(
             return res
 
         if history_messages:
-            return await use_llm_func(
-                input_text, azure_ad_token=aad_token, history_messages=history_messages
+            return await AzureOpenaiClient.azure_openai_complete_if_cache(
+                input_text,
+                azure_ad_token=azure_ad_token,
+                history_messages=history_messages,
             )
         else:
-            return await use_llm_func(input_text, azure_ad_token=aad_token)
+            return await AzureOpenaiClient.azure_openai_complete_if_cache(
+                input_text, azure_ad_token=azure_ad_token
+            )
 
-    async def _process_single_content(
-        chunk_key_dp: tuple[str, TextChunkSchema], aad_token: str
-    ):
+    async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
         """ "Prpocess a single chunk
         Args:
             chunk_key_dp (tuple[str, TextChunkSchema]):
@@ -424,14 +429,11 @@ async def extract_entities(
             **context_base, input_text="{input_text}"
         ).format(**context_base, input_text=content)
 
-        final_result = await _user_llm_func_with_cache(
-            input_text=hint_prompt, aad_token=aad_token
-        )
+        final_result = await _user_llm_func_with_cache(input_text=hint_prompt)
         history = pack_user_ass_to_openai_messages(hint_prompt, final_result)
         for now_glean_index in range(entity_extract_max_gleaning):
             glean_result = await _user_llm_func_with_cache(
                 input_text=continue_prompt,
-                aad_token=aad_token,
                 history_messages=history,
             )
 
@@ -441,7 +443,7 @@ async def extract_entities(
                 break
 
             if_loop_result: str = await _user_llm_func_with_cache(
-                input_text=if_loop_prompt, aad_token=aad_token, history_messages=history
+                input_text=if_loop_prompt, history_messages=history
             )
             if_loop_result = if_loop_result.strip().strip('"').strip("'").lower()
             if if_loop_result != "yes":
@@ -489,9 +491,7 @@ async def extract_entities(
 
     results = []
     for result in tqdm_async(
-        asyncio.as_completed(
-            [_process_single_content(c, azure_ad_token) for c in ordered_chunks]
-        ),
+        asyncio.as_completed([_process_single_content(c) for c in ordered_chunks]),
         total=len(ordered_chunks),
         desc="Level 2 - Extracting entities and relationships",
         unit="chunk",
