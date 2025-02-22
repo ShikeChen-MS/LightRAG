@@ -1,7 +1,6 @@
 import asyncio
 import json
 import re
-from lightrag.llm.azure_openai_client import AzureOpenaiClient
 from tqdm.asyncio import tqdm as tqdm_async
 from typing import Union
 from collections import Counter, defaultdict
@@ -309,6 +308,7 @@ async def extract_entities(
     azure_ad_token: str,
     llm_response_cache: BaseKVStorage = None,
 ) -> Union[BaseGraphStorage, None]:
+    use_llm_func: callable = global_config["llm_model_func"]
     entity_extract_max_gleaning = global_config["entity_extract_max_gleaning"]
     enable_llm_cache_for_entity_extract: bool = global_config[
         "enable_llm_cache_for_entity_extract"
@@ -383,15 +383,13 @@ async def extract_entities(
                 return cached_return
             statistic_data["llm_call"] += 1
             if history_messages:
-                res: str = await AzureOpenaiClient.azure_openai_complete_if_cache(
+                res: str = await use_llm_func(
                     input_text,
                     azure_ad_token=azure_ad_token,
                     history_messages=history_messages,
                 )
             else:
-                res: str = await AzureOpenaiClient.azure_openai_complete_if_cache(
-                    input_text, azure_ad_token=azure_ad_token
-                )
+                res: str = await use_llm_func(input_text, azure_ad_token=azure_ad_token)
             await save_to_cache(
                 llm_response_cache,
                 CacheData(
@@ -404,13 +402,13 @@ async def extract_entities(
             return res
 
         if history_messages:
-            return await AzureOpenaiClient.azure_openai_complete_if_cache(
+            return await use_llm_func(
                 input_text,
                 azure_ad_token=azure_ad_token,
                 history_messages=history_messages,
             )
         else:
-            return await AzureOpenaiClient.azure_openai_complete_if_cache(
+            return await use_llm_func(
                 input_text, azure_ad_token=azure_ad_token
             )
 

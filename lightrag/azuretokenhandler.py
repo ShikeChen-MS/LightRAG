@@ -15,9 +15,7 @@ class AzureToken:
 class AzureTokenHandler:
     __client_id = None
     __client_secret = None
-    __authority = (
-        "https://login.microsoftonline.com/717ad1e8-d729-4966-ad8f-cf873ef57637"
-    )
+    __authority = None
     __app_scope = [f"{__client_id}/.default offline_access"]
     __ai_scope = ["https://cognitiveservices.azure.com/.default offline_access"]
     __cosmos_scope = ["https://token.postgres.cosmos.azure.com/.default offline_access"]
