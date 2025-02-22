@@ -81,15 +81,3 @@ class MultiModel:
         )
 
         return await next_model.gen_func(**args)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    async def main():
-        from lightrag.llm.openai import gpt_4o_mini_complete
-
-        result = await gpt_4o_mini_complete("How are you?")
-        print(result)
-
-    asyncio.run(main())

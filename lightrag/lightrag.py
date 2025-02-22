@@ -1,11 +1,14 @@
 import asyncio
 import os
+import tracemalloc
+import inspect
+import importlib
 from tqdm.asyncio import tqdm as tqdm_async
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
 from typing import Type, cast, Dict
-
+from .prompt import GRAPH_FIELD_SEP
 from .operate import (
     chunking_by_token_size,
     extract_entities,
@@ -16,7 +19,6 @@ from .operate import (
     extract_keywords_only,
     kg_query_with_keywords,
 )
-
 from .utils import (
     EmbeddingFunc,
     compute_mdhash_id,
@@ -34,8 +36,6 @@ from .base import (
     QueryParam,
     DocStatus,
 )
-
-from .prompt import GRAPH_FIELD_SEP
 
 STORAGES = {
     "NetworkXStorage": ".kg.networkx_impl",
@@ -68,15 +68,12 @@ def lazy_external_import(module_name: str, class_name: str):
     """Lazily import a class from an external module based on the package of the caller."""
 
     # Get the caller's module and package
-    import inspect
 
     caller_frame = inspect.currentframe().f_back
     module = inspect.getmodule(caller_frame)
     package = module.__package__ if module else None
 
     def import_class(*args, **kwargs):
-        import importlib
-
         module = importlib.import_module(module_name, package=package)
         cls = getattr(module, class_name)
         return cls(*args, **kwargs)
@@ -154,13 +151,17 @@ class LightRAG:
     )
 
     # embedding_func: EmbeddingFunc = field(default_factory=lambda:hf_embedding)
-    embedding_func: EmbeddingFunc = None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
+    embedding_func: EmbeddingFunc = (
+        None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
+    )
     embedding_batch_num: int = 32
     embedding_func_max_async: int = 16
 
     # LLM
-    llm_model_func: callable = None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
-    llm_model_name: str = "meta-llama/Llama-3.2-1B-Instruct"  # 'meta-llama/Llama-3.2-1B'#'google/gemma-2-2b-it'
+    llm_model_func: callable = (
+        None  # This must be set (we do want to separate llm from the corte, so no more default initialization)
+    )
+    llm_model_name: str = ""
     llm_model_max_token_size: int = int(os.getenv("MAX_TOKENS", "32768"))
     llm_model_max_async: int = int(os.getenv("MAX_ASYNC", "16"))
     llm_model_kwargs: dict = field(default_factory=dict)
@@ -340,7 +341,11 @@ class LightRAG:
         )
 
     async def ainsert(
-        self, string_or_strings, split_by_character=None, split_by_character_only=False
+        self,
+        string_or_strings,
+        azure_ad_token,
+        split_by_character=None,
+        split_by_character_only=False,
     ):
         """Insert documents with checkpoint support
 
@@ -348,6 +353,7 @@ class LightRAG:
             string_or_strings: Single document string or list of document strings
             split_by_character: if split_by_character is not None, split the string by character, if chunk longer than
             chunk_size, split the sub chunk by token size.
+            azure_ad_token: Azure AAD Token for Cognitive Service
             split_by_character_only: if split_by_character_only is True, split the string by character only, when
             split_by_character is None, this parameter is ignored.
         """
@@ -444,11 +450,12 @@ class LightRAG:
 
                     try:
                         # Store chunks in vector database
-                        await self.chunks_vdb.upsert(chunks)
+                        await self.chunks_vdb.upsert(chunks, azure_ad_token)
 
                         # Extract and store entities and relationships
                         maybe_new_kg = await extract_entities(
                             chunks,
+                            azure_ad_token=azure_ad_token,
                             knowledge_graph_inst=self.chunk_entity_relation_graph,
                             entity_vdb=self.entities_vdb,
                             relationships_vdb=self.relationships_vdb,
@@ -500,13 +507,17 @@ class LightRAG:
                     # Only update index when processing succeeds
                     await self._insert_done()
 
-    def insert_custom_chunks(self, full_text: str, text_chunks: list[str]):
+    def insert_custom_chunks(
+        self, full_text: str, azure_ad_token: str, text_chunks: list[str]
+    ):
         loop = always_get_an_event_loop()
         return loop.run_until_complete(
-            self.ainsert_custom_chunks(full_text, text_chunks)
+            self.ainsert_custom_chunks(full_text, azure_ad_token, text_chunks)
         )
 
-    async def ainsert_custom_chunks(self, full_text: str, text_chunks: list[str]):
+    async def ainsert_custom_chunks(
+        self, full_text: str, azure_ad_token: str, text_chunks: list[str]
+    ):
         update_storage = False
         try:
             doc_key = compute_mdhash_id(full_text.strip(), prefix="doc-")
@@ -549,6 +560,7 @@ class LightRAG:
             maybe_new_kg = await extract_entities(
                 inserting_chunks,
                 knowledge_graph_inst=self.chunk_entity_relation_graph,
+                azure_ad_token=azure_ad_token,
                 entity_vdb=self.entities_vdb,
                 relationships_vdb=self.relationships_vdb,
                 global_config=asdict(self),
@@ -682,7 +694,7 @@ class LightRAG:
                     continue
         logger.info(f"Stored {chunk_cnt} chunks from {len(new_docs)} documents")
 
-    async def apipeline_process_extract_graph(self):
+    async def apipeline_process_extract_graph(self, azure_ad_token: str):
         """Get pendding or failed chunks, extract entities and relationships from each chunk"""
         # 1. get all pending and failed chunks
         _todo_chunk_keys = []
@@ -717,6 +729,7 @@ class LightRAG:
                     maybe_new_kg = await extract_entities(
                         chunks,
                         knowledge_graph_inst=self.chunk_entity_relation_graph,
+                        azure_ad_token=azure_ad_token,
                         entity_vdb=self.entities_vdb,
                         relationships_vdb=self.relationships_vdb,
                         llm_response_cache=self.llm_response_cache,
@@ -908,12 +921,24 @@ class LightRAG:
             if update_storage:
                 await self._insert_done()
 
-    def query(self, query: str, prompt: str = "", param: QueryParam = QueryParam()):
+    def query(
+        self,
+        query: str,
+        azure_ad_token: str,
+        prompt: str = "",
+        param: QueryParam = QueryParam(),
+    ):
         loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.aquery(query, prompt, param))
+        return loop.run_until_complete(
+            self.aquery(query, azure_ad_token, prompt, param)
+        )
 
     async def aquery(
-        self, query: str, prompt: str = "", param: QueryParam = QueryParam()
+        self,
+        query: str,
+        azure_ad_token: str,
+        prompt: str = "",
+        param: QueryParam = QueryParam(),
     ):
         if param.mode in ["local", "global", "hybrid"]:
             response = await kg_query(
@@ -924,15 +949,18 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
                 prompt=prompt,
+                azure_ad_token=azure_ad_token,
             )
         elif param.mode == "naive":
             response = await naive_query(
@@ -941,18 +969,22 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
+                azure_ad_token=azure_ad_token,
             )
         elif param.mode == "mix":
             response = await mix_kg_vector_query(
                 query,
+                azure_ad_token,
                 self.chunk_entity_relation_graph,
                 self.entities_vdb,
                 self.relationships_vdb,
@@ -960,13 +992,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         else:
@@ -988,7 +1022,11 @@ class LightRAG:
         )
 
     async def aquery_with_separate_keyword_extraction(
-        self, query: str, prompt: str, param: QueryParam = QueryParam()
+        self,
+        azure_ad_token: str,
+        query: str,
+        prompt: str,
+        param: QueryParam = QueryParam(),
     ):
         """
         1. Calls extract_keywords_only to get HL/LL keywords from 'query'.
@@ -1026,19 +1064,22 @@ class LightRAG:
         if param.mode in ["local", "global", "hybrid"]:
             response = await kg_query_with_keywords(
                 formatted_question,
+                azure_ad_token,
                 self.chunk_entity_relation_graph,
                 self.entities_vdb,
                 self.relationships_vdb,
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_funcne,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_funcne,
+                    )
                 ),
             )
         elif param.mode == "naive":
@@ -1048,13 +1089,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         elif param.mode == "mix":
@@ -1067,13 +1110,15 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace="llm_response_cache",
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace="llm_response_cache",
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         else:
@@ -1383,8 +1428,6 @@ class LightRAG:
             include_vector_data: Whether to include data from the vector database
         """
         try:
-            import tracemalloc
-
             tracemalloc.start()
             return asyncio.run(self.get_entity_info(entity_name, include_vector_data))
         finally:
@@ -1443,8 +1486,6 @@ class LightRAG:
             include_vector_data: Whether to include data from the vector database
         """
         try:
-            import tracemalloc
-
             tracemalloc.start()
             return asyncio.run(
                 self.get_relation_info(src_entity, tgt_entity, include_vector_data)

@@ -2,27 +2,38 @@ accelerate
 aiofiles
 aiohttp
 configparser
+ascii_colors
+fastapi
+nest_asyncio
+python-multipart
+pyjwt
+torch
+uvicorn
 
 # File manipulation libraries
 docling
+docx
+python-pptx
+pypdf2
 graspologic
 
 # database packages
 networkx
+nano-vectordb
+asyncpg
 
 # Basic modules
 numpy
+openai
 pipmaster
 pydantic
 python-dotenv
-
 setuptools
 tenacity
+msal
 
 
 # LLM packages
 tiktoken
 tqdm
 xxhash
-
-# Extra libraries are installed when needed using pipmaster

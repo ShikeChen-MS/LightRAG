@@ -55,7 +55,6 @@ from typing import Any, Union, cast
 import networkx as nx
 import numpy as np
 
-
 from lightrag.utils import (
     logger,
 )

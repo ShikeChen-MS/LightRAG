@@ -6,16 +6,15 @@ import json
 import logging
 import os
 import re
+import hashlib
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
-from typing import Any, Union, List, Optional
+from typing import Callable, Awaitable, Any, Union, List, Optional
 import xml.etree.ElementTree as ET
 import bs4
-
 import numpy as np
 import tiktoken
-
 from lightrag.prompt import PROMPTS
 
 
@@ -58,7 +57,7 @@ def set_logger(log_file: str):
 class EmbeddingFunc:
     embedding_dim: int
     max_token_size: int
-    func: callable
+    func: Callable[[list[str], str], Awaitable[np.ndarray]]
     # concurrent_limit: int = 16
 
     async def __call__(self, *args, **kwargs) -> np.ndarray:
@@ -117,8 +116,6 @@ def compute_args_hash(*args, cache_type: str = None) -> str:
     Returns:
         str: Hash string
     """
-    import hashlib
-
     # Convert all arguments to strings and join them
     args_str = "".join([str(arg) for arg in args])
     if cache_type:
@@ -286,15 +283,21 @@ def xml_to_json(xml_file):
         for node in root.findall(".//node", namespace):
             node_data = {
                 "id": node.get("id").strip('"'),
-                "entity_type": node.find("./data[@key='d0']", namespace).text.strip('"')
-                if node.find("./data[@key='d0']", namespace) is not None
-                else "",
-                "description": node.find("./data[@key='d1']", namespace).text
-                if node.find("./data[@key='d1']", namespace) is not None
-                else "",
-                "source_id": node.find("./data[@key='d2']", namespace).text
-                if node.find("./data[@key='d2']", namespace) is not None
-                else "",
+                "entity_type": (
+                    node.find("./data[@key='d0']", namespace).text.strip('"')
+                    if node.find("./data[@key='d0']", namespace) is not None
+                    else ""
+                ),
+                "description": (
+                    node.find("./data[@key='d1']", namespace).text
+                    if node.find("./data[@key='d1']", namespace) is not None
+                    else ""
+                ),
+                "source_id": (
+                    node.find("./data[@key='d2']", namespace).text
+                    if node.find("./data[@key='d2']", namespace) is not None
+                    else ""
+                ),
             }
             data["nodes"].append(node_data)
 
@@ -302,18 +305,26 @@ def xml_to_json(xml_file):
             edge_data = {
                 "source": edge.get("source").strip('"'),
                 "target": edge.get("target").strip('"'),
-                "weight": float(edge.find("./data[@key='d3']", namespace).text)
-                if edge.find("./data[@key='d3']", namespace) is not None
-                else 0.0,
-                "description": edge.find("./data[@key='d4']", namespace).text
-                if edge.find("./data[@key='d4']", namespace) is not None
-                else "",
-                "keywords": edge.find("./data[@key='d5']", namespace).text
-                if edge.find("./data[@key='d5']", namespace) is not None
-                else "",
-                "source_id": edge.find("./data[@key='d6']", namespace).text
-                if edge.find("./data[@key='d6']", namespace) is not None
-                else "",
+                "weight": (
+                    float(edge.find("./data[@key='d3']", namespace).text)
+                    if edge.find("./data[@key='d3']", namespace) is not None
+                    else 0.0
+                ),
+                "description": (
+                    edge.find("./data[@key='d4']", namespace).text
+                    if edge.find("./data[@key='d4']", namespace) is not None
+                    else ""
+                ),
+                "keywords": (
+                    edge.find("./data[@key='d5']", namespace).text
+                    if edge.find("./data[@key='d5']", namespace) is not None
+                    else ""
+                ),
+                "source_id": (
+                    edge.find("./data[@key='d6']", namespace).text
+                    if edge.find("./data[@key='d6']", namespace) is not None
+                    else ""
+                ),
             }
             data["edges"].append(edge_data)
 
@@ -431,12 +442,16 @@ async def get_best_cached_response(
                 if best_similarity < similarity_threshold:
                     log_data = {
                         "event": "llm_check_cache_rejected",
-                        "original_question": original_prompt[:100] + "..."
-                        if len(original_prompt) > 100
-                        else original_prompt,
-                        "cached_question": best_prompt[:100] + "..."
-                        if len(best_prompt) > 100
-                        else best_prompt,
+                        "original_question": (
+                            original_prompt[:100] + "..."
+                            if len(original_prompt) > 100
+                            else original_prompt
+                        ),
+                        "cached_question": (
+                            best_prompt[:100] + "..."
+                            if len(best_prompt) > 100
+                            else best_prompt
+                        ),
                         "similarity_score": round(best_similarity, 4),
                         "threshold": similarity_threshold,
                     }
@@ -498,6 +513,7 @@ async def handle_cache(
     hashing_kv,
     args_hash,
     prompt,
+    azure_ad_token,
     mode="default",
     cache_type=None,
     force_llm_cache=False,
@@ -520,7 +536,9 @@ async def handle_cache(
         quantized = min_val = max_val = None
         if is_embedding_cache_enabled:
             # Use embedding cache
-            current_embedding = await hashing_kv.embedding_func([prompt])
+            current_embedding = await hashing_kv.embedding_func(
+                [prompt], azure_ad_token
+            )
             llm_model_func = hashing_kv.global_config.get("llm_model_func")
             quantized, min_val, max_val = quantize_embedding(current_embedding[0])
             best_cached_response = await get_best_cached_response(
@@ -577,12 +595,14 @@ async def save_to_cache(hashing_kv, cache_data: CacheData):
     mode_cache[cache_data.args_hash] = {
         "return": cache_data.content,
         "cache_type": cache_data.cache_type,
-        "embedding": cache_data.quantized.tobytes().hex()
-        if cache_data.quantized is not None
-        else None,
-        "embedding_shape": cache_data.quantized.shape
-        if cache_data.quantized is not None
-        else None,
+        "embedding": (
+            cache_data.quantized.tobytes().hex()
+            if cache_data.quantized is not None
+            else None
+        ),
+        "embedding_shape": (
+            cache_data.quantized.shape if cache_data.quantized is not None else None
+        ),
         "embedding_min": cache_data.min_val,
         "embedding_max": cache_data.max_val,
         "original_prompt": cache_data.prompt,

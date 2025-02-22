@@ -52,16 +52,6 @@ def read_requirements():
     return deps
 
 
-def read_api_requirements():
-    api_deps = []
-    try:
-        with open("./lightrag/api/requirements.txt") as f:
-            api_deps = [line.strip() for line in f if line.strip()]
-    except FileNotFoundError:
-        print("Warning: API requirements.txt not found.")
-    return api_deps
-
-
 def read_extra_requirements():
     api_deps = []
     try:
@@ -101,12 +91,11 @@ setuptools.setup(
     project_urls={  # Additional project metadata
         "Documentation": metadata.get("__url__", ""),
         "Source": metadata.get("__url__", ""),
-        "Tracker": f"{metadata.get('__url__', '')}/issues"
-        if metadata.get("__url__")
-        else "",
+        "Tracker": (
+            f"{metadata.get('__url__', '')}/issues" if metadata.get("__url__") else ""
+        ),
     },
     extras_require={
-        "api": read_api_requirements(),  # API requirements as optional
         "tools": read_extra_requirements(),  # API requirements as optional
     },
     entry_points={

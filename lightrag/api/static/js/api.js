@@ -342,18 +342,18 @@ const handlers = {
             healthStatus.innerHTML = `
                 <div class="space-y-2">
                     <div class="flex items-center">
-                        <div class="w-3 h-3 rounded-full ${data.status === 'healthy' ? 'bg-green-500' : 'bg-red-500'} mr-2"></div>
-                        <span class="font-medium">${data.status}</span>
+                        <div class="w-3 h-3 rounded-full ${data['Status'] === 'Healthy' ? 'bg-green-500' : 'bg-red-500'} mr-2"></div>
+                        <span class="font-medium">${data['Status']}</span>
                     </div>
                     <div>
-                        <p class="text-sm text-gray-600">Working Directory: ${data.working_directory}</p>
-                        <p class="text-sm text-gray-600">Input Directory: ${data.input_directory}</p>
-                        <p class="text-sm text-gray-600">Indexed Files: ${data.indexed_files_count}</p>
+                        <p class="text-sm text-gray-600">Working Directory: ${data['Working Directory']}</p>
+                        <p class="text-sm text-gray-600">Input Directory: ${data['Input Directory']}</p>
+                        <p class="text-sm text-gray-600">Number of Indexed Files: ${data['Indexed Files Count']}</p>
                     </div>
                 </div>
             `;
 
-            configStatus.innerHTML = Object.entries(data.configuration)
+            configStatus.innerHTML = Object.entries(data['Configuration'])
                 .map(([key, value]) => `
                     <div class="mb-2">
                         <span class="text-sm font-medium text-gray-700">${key}:</span>

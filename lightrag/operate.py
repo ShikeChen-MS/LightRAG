@@ -95,6 +95,7 @@ def chunking_by_token_size(
 
 async def _handle_entity_relation_summary(
     entity_or_relation_name: str,
+    azure_ad_token: str,
     description: str,
     global_config: dict,
 ) -> str:
@@ -124,7 +125,9 @@ async def _handle_entity_relation_summary(
     )
     use_prompt = prompt_template.format(**context_base)
     logger.debug(f"Trigger summary: {entity_or_relation_name}")
-    summary = await use_llm_func(use_prompt, max_tokens=summary_max_tokens)
+    summary = await use_llm_func(
+        use_prompt, azure_ad_token=azure_ad_token, max_tokens=summary_max_tokens
+    )
     return summary
 
 
@@ -179,6 +182,7 @@ async def _handle_single_relationship_extraction(
 async def _merge_nodes_then_upsert(
     entity_name: str,
     nodes_data: list[dict],
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
 ):
@@ -209,7 +213,7 @@ async def _merge_nodes_then_upsert(
         set([dp["source_id"] for dp in nodes_data] + already_source_ids)
     )
     description = await _handle_entity_relation_summary(
-        entity_name, description, global_config
+        entity_name, azure_ad_token, description, global_config
     )
     node_data = dict(
         entity_type=entity_type,
@@ -228,6 +232,7 @@ async def _merge_edges_then_upsert(
     src_id: str,
     tgt_id: str,
     edges_data: list[dict],
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
 ):
@@ -268,7 +273,10 @@ async def _merge_edges_then_upsert(
                 },
             )
     description = await _handle_entity_relation_summary(
-        f"({src_id}, {tgt_id})", description, global_config
+        f"({src_id}, {tgt_id})",
+        azure_ad_token,
+        description,
+        global_config,
     )
     await knowledge_graph_inst.upsert_edge(
         src_id,
@@ -297,6 +305,7 @@ async def extract_entities(
     entity_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
     global_config: dict,
+    azure_ad_token: str,
     llm_response_cache: BaseKVStorage = None,
 ) -> Union[BaseGraphStorage, None]:
     use_llm_func: callable = global_config["llm_model_func"]
@@ -363,6 +372,7 @@ async def extract_entities(
                 llm_response_cache,
                 arg_hash,
                 _prompt,
+                azure_ad_token,
                 "default",
                 cache_type="extract",
                 force_llm_cache=True,
@@ -374,10 +384,12 @@ async def extract_entities(
             statistic_data["llm_call"] += 1
             if history_messages:
                 res: str = await use_llm_func(
-                    input_text, history_messages=history_messages
+                    input_text,
+                    azure_ad_token=azure_ad_token,
+                    history_messages=history_messages,
                 )
             else:
-                res: str = await use_llm_func(input_text)
+                res: str = await use_llm_func(input_text, azure_ad_token=azure_ad_token)
             await save_to_cache(
                 llm_response_cache,
                 CacheData(
@@ -390,9 +402,15 @@ async def extract_entities(
             return res
 
         if history_messages:
-            return await use_llm_func(input_text, history_messages=history_messages)
+            return await use_llm_func(
+                input_text,
+                azure_ad_token=azure_ad_token,
+                history_messages=history_messages,
+            )
         else:
-            return await use_llm_func(input_text)
+            return await use_llm_func(
+                input_text, azure_ad_token=azure_ad_token
+            )
 
     async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
         """ "Prpocess a single chunk
@@ -409,11 +427,12 @@ async def extract_entities(
             **context_base, input_text="{input_text}"
         ).format(**context_base, input_text=content)
 
-        final_result = await _user_llm_func_with_cache(hint_prompt)
+        final_result = await _user_llm_func_with_cache(input_text=hint_prompt)
         history = pack_user_ass_to_openai_messages(hint_prompt, final_result)
         for now_glean_index in range(entity_extract_max_gleaning):
             glean_result = await _user_llm_func_with_cache(
-                continue_prompt, history_messages=history
+                input_text=continue_prompt,
+                history_messages=history,
             )
 
             history += pack_user_ass_to_openai_messages(continue_prompt, glean_result)
@@ -422,7 +441,7 @@ async def extract_entities(
                 break
 
             if_loop_result: str = await _user_llm_func_with_cache(
-                if_loop_prompt, history_messages=history
+                input_text=if_loop_prompt, history_messages=history
             )
             if_loop_result = if_loop_result.strip().strip('"').strip("'").lower()
             if if_loop_result != "yes":
@@ -491,7 +510,9 @@ async def extract_entities(
     for result in tqdm_async(
         asyncio.as_completed(
             [
-                _merge_nodes_then_upsert(k, v, knowledge_graph_inst, global_config)
+                _merge_nodes_then_upsert(
+                    k, v, azure_ad_token, knowledge_graph_inst, global_config
+                )
                 for k, v in maybe_nodes.items()
             ]
         ),
@@ -509,7 +530,7 @@ async def extract_entities(
         asyncio.as_completed(
             [
                 _merge_edges_then_upsert(
-                    k[0], k[1], v, knowledge_graph_inst, global_config
+                    k[0], k[1], v, azure_ad_token, knowledge_graph_inst, global_config
                 )
                 for k, v in maybe_edges.items()
             ]
@@ -541,7 +562,7 @@ async def extract_entities(
             }
             for dp in all_entities_data
         }
-        await entity_vdb.upsert(data_for_vdb)
+        await entity_vdb.upsert(data_for_vdb, azure_ad_token)
 
     if relationships_vdb is not None:
         data_for_vdb = {
@@ -558,7 +579,7 @@ async def extract_entities(
             }
             for dp in all_relationships_data
         }
-        await relationships_vdb.upsert(data_for_vdb)
+        await relationships_vdb.upsert(data_for_vdb, azure_ad_token)
 
     return knowledge_graph_inst
 
@@ -571,6 +592,7 @@ async def kg_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    azure_ad_token: str,
     hashing_kv: BaseKVStorage = None,
     prompt: str = "",
 ) -> str:
@@ -578,14 +600,19 @@ async def kg_query(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash(query_param.mode, query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, query, query_param.mode, cache_type="query"
+        hashing_kv,
+        args_hash,
+        query,
+        azure_ad_token,
+        query_param.mode,
+        cache_type="query",
     )
     if cached_response is not None:
         return cached_response
 
     # Extract keywords using extract_keywords_only function which already supports conversation history
     hl_keywords, ll_keywords = await extract_keywords_only(
-        query, query_param, global_config, hashing_kv
+        query, query_param, global_config, azure_ad_token, hashing_kv
     )
 
     logger.debug(f"High-level keywords: {hl_keywords}")
@@ -617,6 +644,7 @@ async def kg_query(
     keywords = [ll_keywords, hl_keywords]
     context = await _build_query_context(
         keywords,
+        azure_ad_token,
         knowledge_graph_inst,
         entities_vdb,
         relationships_vdb,
@@ -648,6 +676,7 @@ async def kg_query(
 
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
         stream=query_param.stream,
     )
@@ -683,6 +712,7 @@ async def extract_keywords_only(
     text: str,
     param: QueryParam,
     global_config: dict,
+    azure_ad_token: str,
     hashing_kv: BaseKVStorage = None,
 ) -> tuple[list[str], list[str]]:
     """
@@ -699,9 +729,10 @@ async def extract_keywords_only(
     if cached_response is not None:
         try:
             keywords_data = json.loads(cached_response)
-            return keywords_data["high_level_keywords"], keywords_data[
-                "low_level_keywords"
-            ]
+            return (
+                keywords_data["high_level_keywords"],
+                keywords_data["low_level_keywords"],
+            )
         except (json.JSONDecodeError, KeyError):
             logger.warning(
                 "Invalid cache format for keywords, proceeding with extraction"
@@ -733,7 +764,7 @@ async def extract_keywords_only(
 
     # 5. Call the LLM for keyword extraction
     use_model_func = global_config["llm_model_func"]
-    result = await use_model_func(kw_prompt, keyword_extraction=True)
+    result = await use_model_func(kw_prompt, azure_ad_token, keyword_extraction=True)
 
     # 6. Parse out JSON from the LLM response
     match = re.search(r"\{.*\}", result, re.DOTALL)
@@ -773,6 +804,7 @@ async def extract_keywords_only(
 
 async def mix_kg_vector_query(
     query: str,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -835,6 +867,7 @@ async def mix_kg_vector_query(
             # Build knowledge graph context
             context = await _build_query_context(
                 [ll_keywords_str, hl_keywords_str],
+                azure_ad_token,
                 knowledge_graph_inst,
                 entities_vdb,
                 relationships_vdb,
@@ -914,12 +947,14 @@ async def mix_kg_vector_query(
 
     # 5. Construct hybrid prompt
     sys_prompt = PROMPTS["mix_rag_response"].format(
-        kg_context=kg_context
-        if kg_context
-        else "No relevant knowledge graph information found",
-        vector_context=vector_context
-        if vector_context
-        else "No relevant text information found",
+        kg_context=(
+            kg_context
+            if kg_context
+            else "No relevant knowledge graph information found"
+        ),
+        vector_context=(
+            vector_context if vector_context else "No relevant text information found"
+        ),
         response_type=query_param.response_type,
         history=history_context,
     )
@@ -930,6 +965,7 @@ async def mix_kg_vector_query(
     # 6. Generate response
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
         stream=query_param.stream,
     )
@@ -966,6 +1002,7 @@ async def mix_kg_vector_query(
 
 async def _build_query_context(
     query: list,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -980,6 +1017,7 @@ async def _build_query_context(
     if query_param.mode == "local":
         entities_context, relations_context, text_units_context = await _get_node_data(
             ll_keywords,
+            azure_ad_token,
             knowledge_graph_inst,
             entities_vdb,
             text_chunks_db,
@@ -988,6 +1026,7 @@ async def _build_query_context(
     elif query_param.mode == "global":
         entities_context, relations_context, text_units_context = await _get_edge_data(
             hl_keywords,
+            azure_ad_token,
             knowledge_graph_inst,
             relationships_vdb,
             text_chunks_db,
@@ -997,6 +1036,7 @@ async def _build_query_context(
         ll_data, hl_data = await asyncio.gather(
             _get_node_data(
                 ll_keywords,
+                azure_ad_token,
                 knowledge_graph_inst,
                 entities_vdb,
                 text_chunks_db,
@@ -1004,6 +1044,7 @@ async def _build_query_context(
             ),
             _get_edge_data(
                 hl_keywords,
+                azure_ad_token,
                 knowledge_graph_inst,
                 relationships_vdb,
                 text_chunks_db,
@@ -1050,13 +1091,14 @@ async def _build_query_context(
 
 async def _get_node_data(
     query,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
 ):
     # get similar entities
-    results = await entities_vdb.query(query, top_k=query_param.top_k)
+    results = await entities_vdb.query(query, azure_ad_token, top_k=query_param.top_k)
     if not len(results):
         return "", "", ""
     # get entity information
@@ -1266,12 +1308,15 @@ async def _find_most_related_edges_from_entities(
 
 async def _get_edge_data(
     keywords,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     relationships_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
 ):
-    results = await relationships_vdb.query(keywords, top_k=query_param.top_k)
+    results = await relationships_vdb.query(
+        keywords, azure_ad_token, top_k=query_param.top_k
+    )
 
     if not len(results):
         return "", "", ""
@@ -1499,6 +1544,7 @@ async def naive_query(
     text_chunks_db: BaseKVStorage[TextChunkSchema],
     query_param: QueryParam,
     global_config: dict,
+    azure_ad_token: str,
     hashing_kv: BaseKVStorage = None,
 ):
     # Handle cache
@@ -1561,6 +1607,7 @@ async def naive_query(
 
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
     )
 
@@ -1596,6 +1643,7 @@ async def naive_query(
 
 async def kg_query_with_keywords(
     query: str,
+    azure_ad_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -1667,6 +1715,7 @@ async def kg_query_with_keywords(
     # ---------------------------
     context = await _build_query_context(
         keywords,
+        azure_ad_token,
         knowledge_graph_inst,
         entities_vdb,
         relationships_vdb,
@@ -1703,6 +1752,7 @@ async def kg_query_with_keywords(
 
     response = await use_model_func(
         query,
+        azure_ad_token=azure_ad_token,
         system_prompt=sys_prompt,
         stream=query_param.stream,
     )
