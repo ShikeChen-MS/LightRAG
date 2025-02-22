@@ -16,6 +16,8 @@ docx
 python-pptx
 pypdf2
 graspologic
+azure-storage-blob
+azure-data-tables
 
 # database packages
 networkx

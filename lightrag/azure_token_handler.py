@@ -3,10 +3,14 @@ import jwt
 import enum
 from datetime import datetime, timedelta, timezone
 
+
 class TokenScope(enum.Enum):
     CognitiveServices = "https://cognitiveservices.azure.com/.default offline_access"
-    CosmosDB_Postgres = "https://token.postgres.cosmos.azure.com/.default offline_access"
+    CosmosDB_Postgres = (
+        "https://token.postgres.cosmos.azure.com/.default offline_access"
+    )
     Storage = "https://storage.azure.com/.default offline_access"
+
 
 class AzureToken:
     def __init__(self, token: str, refresh_token: str, token_scope: TokenScope):
@@ -25,9 +29,10 @@ class AzureToken:
 
 class AzureTokenHandler:
     __client_id = None
+    # TODO: this is for development and debugging
+    # TODO: Need to modify this implementation before production
     __client_secret = None
     __authority = None
-    __app_scope = [f"{__client_id}/.default offline_access"]
     __confidential_app = None
 
     @classmethod
@@ -47,17 +52,20 @@ class AzureTokenHandler:
         # This will allow us to acquire token to any scope that
         # the app has access to with the refresh token we get
         result = app.acquire_token_on_behalf_of(
-            user_assertion=access_token, scopes=cls.__app_scope
+            user_assertion=access_token,
+            scopes=[f"{cls.__client_id}/.default offline_access"],
         )
         if "error" in result:
             raise ValueError(f"Error acquiring token: {result['error_description']}")
         if "refresh_token" not in result:
-            raise ValueError("Refresh token not found in the result")
-        token = app.acquire_token_by_refresh_token(result.get("refresh_token"), [token_scope.value])
+            raise ValueError(
+                "Refresh token not found in the result while acquiring token by user token"
+            )
+        token = app.acquire_token_by_refresh_token(
+            result.get("refresh_token"), [token_scope.value]
+        )
         return AzureToken(
-            token.get("access_token"),
-            token.get("refresh_token"),
-            token_scope
+            token.get("access_token"), token.get("refresh_token"), token_scope
         )
 
     @classmethod
@@ -81,15 +89,14 @@ class AzureTokenHandler:
             raise ValueError(f"Error acquiring token: {str(e)}")
 
     @classmethod
-    def acquire_token_by_refresh_token(cls, refresh_token: str, token_scope: TokenScope):
+    def acquire_token_by_refresh_token(
+        cls, refresh_token: str, token_scope: TokenScope
+    ):
         app = cls.get_confidential_app()
         token = app.acquire_token_by_refresh_token(refresh_token, [token_scope.value])
         return AzureToken(
-            token.get("access_token"),
-            token.get("refresh_token"),
-            token_scope
+            token.get("access_token"), token.get("refresh_token"), token_scope
         )
-
 
     @classmethod
     def __is_token_near_expire(cls, azure_token: AzureToken, threshold_seconds: int):

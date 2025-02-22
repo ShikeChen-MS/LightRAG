@@ -408,9 +408,7 @@ async def extract_entities(
                 history_messages=history_messages,
             )
         else:
-            return await use_llm_func(
-                input_text, azure_ad_token=azure_ad_token
-            )
+            return await use_llm_func(input_text, azure_ad_token=azure_ad_token)
 
     async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
         """ "Prpocess a single chunk
