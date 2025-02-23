@@ -40,7 +40,6 @@ from .routers.document_routes import (
 )
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
-from .routers.ollama_api import OllamaAPI
 
 # Load environment variables
 try:
@@ -361,10 +360,6 @@ def create_app(args):
     app.include_router(create_document_routes(rag, doc_manager, api_key))
     app.include_router(create_query_routes(rag, api_key, args.top_k))
     app.include_router(create_graph_routes(rag, api_key))
-
-    # Add Ollama API routes
-    ollama_api = OllamaAPI(rag, top_k=args.top_k)
-    app.include_router(ollama_api.router, prefix="/api")
 
     @app.get("/health", dependencies=[Depends(optional_api_key)])
     async def get_status():
