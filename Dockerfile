@@ -1,7 +1,13 @@
 # Build stage
-FROM python:3.11-slim as builder
+FROM python:3.12.9-slim as builder
 
 WORKDIR /app
+
+# Update base image to latest
+RUN apt-get update && apt-get upgrade -y
+
+# Update pip to latest version
+RUN	python -m pip install -U pip
 
 # Copy only requirements files first to leverage Docker cache
 COPY requirements.txt .
@@ -12,9 +18,15 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 RUN pip install --user --no-cache-dir -r lightrag/api/requirements.txt
 
 # Final stage
-FROM python:3.11-slim
+FROM python:3.12.9-slim
 
 WORKDIR /app
+
+# Update base image to latest
+RUN apt-get update && apt-get upgrade -y
+
+# Update pip to latest version
+RUN	python -m pip install -U pip
 
 # Copy only necessary files from builder
 COPY --from=builder /root/.local /root/.local
