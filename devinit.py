@@ -1,4 +1,3 @@
-
 import os
 import sys
 import subprocess
@@ -78,29 +77,23 @@ if __name__ == "__main__":
     check_python_version()
 
     venv_name = ".venv"
-    requirements_file = "requirements.txt"
-    requirements_file2 = "./lightrag/api/requirements.txt"
-    requirements_file3 = "./lightrag/tools/lightrag_visualizer/requirements.txt"
-    requirements_file4 = "./devrequirements.txt"
+    requirements_file = [
+        "requirements.txt",
+        "./lightrag/api/requirements.txt",
+        "./lightrag/tools/lightrag_visualizer/requirements.txt",
+        "./devrequirements.txt"
+    ]
 
     create_venv(venv_name)
     req_install = True
-    if requirements_file:
+    for requirements_file in requirements_file:
         if check_file_existence(requirements_file):
             install_requirements(venv_name, requirements_file)
         else:
-            print(f"Requirements file '{requirements_file}' not found. Exiting.")
-            sys.exit(1)
-        if check_file_existence(requirements_file2):
-            install_requirements(venv_name, requirements_file2)
-        else:
-            print(f"Requirements file '{requirements_file2}' not found. Exiting.")
-            sys.exit(1)
-        if check_file_existence(requirements_file3):
-            install_requirements(venv_name, requirements_file3)
-        else:
-            print(f"Requirements file '{requirements_file3}' not found. Exiting.")
-            sys.exit(1)
-        if req_install:
-            print("All requirements installed successfully.")
-            sys.exit(0)
+            print(f"Requirements file '{requirements_file}' not found. Continue without it...")
+            req_install = False
+    if req_install:
+        print("All requirements installed successfully.")
+        sys.exit(0)
+    print("Virtual Environment created successfully, but not all requirements were installed...")
+    sys.exit(1)
