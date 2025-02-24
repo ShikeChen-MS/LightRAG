@@ -1,12 +1,16 @@
 aiohttp
 configparser
+graspologic
 future
 
 # Basic modules
+adlfs
 numpy
+networkx
 pipmaster
 pydantic
 python-dotenv
+msal
 
 setuptools
 tenacity

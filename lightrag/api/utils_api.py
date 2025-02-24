@@ -17,19 +17,6 @@ from starlette.status import HTTP_403_FORBIDDEN
 load_dotenv(override=True)
 
 
-class OllamaServerInfos:
-    # Constants for emulated Ollama model information
-    LIGHTRAG_NAME = "lightrag"
-    LIGHTRAG_TAG = os.getenv("OLLAMA_EMULATING_MODEL_TAG", "latest")
-    LIGHTRAG_MODEL = f"{LIGHTRAG_NAME}:{LIGHTRAG_TAG}"
-    LIGHTRAG_SIZE = 7365960935  # it's a dummy value
-    LIGHTRAG_CREATED_AT = "2024-01-15T00:00:00Z"
-    LIGHTRAG_DIGEST = "sha256:lightrag"
-
-
-ollama_server_infos = OllamaServerInfos()
-
-
 def get_api_key_dependency(api_key: Optional[str]):
     """
     Create an API key dependency for route protection.
@@ -72,18 +59,6 @@ class DefaultRAGStorageConfig:
     VECTOR_STORAGE = "NanoVectorDBStorage"
     GRAPH_STORAGE = "NetworkXStorage"
     DOC_STATUS_STORAGE = "JsonDocStatusStorage"
-
-
-def get_default_host(binding_type: str) -> str:
-    default_hosts = {
-        "ollama": os.getenv("LLM_BINDING_HOST", "http://localhost:11434"),
-        "lollms": os.getenv("LLM_BINDING_HOST", "http://localhost:9600"),
-        "azure_openai": os.getenv("AZURE_OPENAI_ENDPOINT", "https://api.openai.com/v1"),
-        "openai": os.getenv("LLM_BINDING_HOST", "https://api.openai.com/v1"),
-    }
-    return default_hosts.get(
-        binding_type, os.getenv("LLM_BINDING_HOST", "http://localhost:11434")
-    )  # fallback to ollama if unknown
 
 
 def get_env_value(env_key: str, default: any, value_type: type = str) -> any:
@@ -235,16 +210,6 @@ def parse_args() -> argparse.Namespace:
         help="Cosine similarity threshold (default: from env or 0.4)",
     )
 
-    # Ollama model name
-    parser.add_argument(
-        "--simulated-model-name",
-        type=str,
-        default=get_env_value(
-            "SIMULATED_MODEL_NAME", ollama_server_infos.LIGHTRAG_MODEL
-        ),
-        help="Number of conversation history turns to include (default: from env or 3)",
-    )
-
     # Namespace
     parser.add_argument(
         "--namespace-prefix",
@@ -258,22 +223,6 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         default=False,
         help="Enable automatic scanning when the program starts",
-    )
-
-    # LLM and embedding bindings
-    parser.add_argument(
-        "--llm-binding",
-        type=str,
-        default=get_env_value("LLM_BINDING", "ollama"),
-        choices=["lollms", "ollama", "openai", "openai-ollama", "azure_openai"],
-        help="LLM binding type (default: from env or ollama)",
-    )
-    parser.add_argument(
-        "--embedding-binding",
-        type=str,
-        default=get_env_value("EMBEDDING_BINDING", "ollama"),
-        choices=["lollms", "ollama", "openai", "azure_openai"],
-        help="Embedding binding type (default: from env or ollama)",
     )
 
     args = parser.parse_args()
@@ -296,31 +245,21 @@ def parse_args() -> argparse.Namespace:
         "LIGHTRAG_VECTOR_STORAGE", DefaultRAGStorageConfig.VECTOR_STORAGE
     )
 
-    # Handle openai-ollama special case
-    if args.llm_binding == "openai-ollama":
-        args.llm_binding = "openai"
-        args.embedding_binding = "ollama"
+    args.storage_account_endpoint = get_env_value("AZURE_STORAGE_ACCOUNT_ENDPOINT", None)
+    args.storage_account_container_name = get_env_value("STORAGE_PREFIX", "lightrag")
+    args.storage_account_name = get_env_value("AZURE_STORAGE_ACCOUNT_NAME", None)
 
-    args.llm_binding_host = get_env_value(
-        "LLM_BINDING_HOST", get_default_host(args.llm_binding)
-    )
-    args.embedding_binding_host = get_env_value(
-        "EMBEDDING_BINDING_HOST", get_default_host(args.embedding_binding)
-    )
-    args.llm_binding_api_key = get_env_value("LLM_BINDING_API_KEY", None)
-    args.embedding_binding_api_key = get_env_value("EMBEDDING_BINDING_API_KEY", "")
-
+    args.llm_binding_host = get_env_value("AZURE_OPENAI_ENDPOINT", None)
+    args.embedding_binding_host = get_env_value("AZURE_OPENAI_EMBEDDING_ENDPOINT", None)
     # Inject model configuration
-    args.llm_model = get_env_value("LLM_MODEL", "mistral-nemo:latest")
-    args.embedding_model = get_env_value("EMBEDDING_MODEL", "bge-m3:latest")
+    args.llm_model = get_env_value("AZURE_OPENAI_MODEL_NAME", None)
+    args.embedding_model = get_env_value("AZURE_OPENAI_EMDEDDING_MODEL_NAME", None)
     args.embedding_dim = get_env_value("EMBEDDING_DIM", 1024, int)
     args.max_embed_tokens = get_env_value("MAX_EMBED_TOKENS", 8192, int)
 
     # Inject chunk configuration
     args.chunk_size = get_env_value("CHUNK_SIZE", 1200, int)
     args.chunk_overlap_size = get_env_value("CHUNK_OVERLAP_SIZE", 100, int)
-
-    ollama_server_infos.LIGHTRAG_MODEL = args.simulated_model_name
 
     return args
 
@@ -367,8 +306,6 @@ def display_splash_screen(args: argparse.Namespace) -> None:
 
     # LLM Configuration
     ASCIIColors.magenta("\n🤖 LLM Configuration:")
-    ASCIIColors.white("    ├─ Binding: ", end="")
-    ASCIIColors.yellow(f"{args.llm_binding}")
     ASCIIColors.white("    ├─ Host: ", end="")
     ASCIIColors.yellow(f"{args.llm_binding_host}")
     ASCIIColors.white("    └─ Model: ", end="")
@@ -376,8 +313,6 @@ def display_splash_screen(args: argparse.Namespace) -> None:
 
     # Embedding Configuration
     ASCIIColors.magenta("\n📊 Embedding Configuration:")
-    ASCIIColors.white("    ├─ Binding: ", end="")
-    ASCIIColors.yellow(f"{args.embedding_binding}")
     ASCIIColors.white("    ├─ Host: ", end="")
     ASCIIColors.yellow(f"{args.embedding_binding_host}")
     ASCIIColors.white("    ├─ Model: ", end="")
@@ -416,8 +351,6 @@ def display_splash_screen(args: argparse.Namespace) -> None:
     ASCIIColors.yellow(f"{args.doc_status_storage}")
 
     ASCIIColors.magenta("\n🛠️ System Configuration:")
-    ASCIIColors.white("    ├─ Ollama Emulating Model: ", end="")
-    ASCIIColors.yellow(f"{ollama_server_infos.LIGHTRAG_MODEL}")
     ASCIIColors.white("    ├─ Log Level: ", end="")
     ASCIIColors.yellow(f"{args.log_level}")
     ASCIIColors.white("    ├─ Verbose Debug: ", end="")

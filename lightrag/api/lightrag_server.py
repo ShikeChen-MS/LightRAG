@@ -22,7 +22,6 @@ from dotenv import load_dotenv
 from .utils_api import (
     get_api_key_dependency,
     parse_args,
-    get_default_host,
     display_splash_screen,
 )
 from lightrag import LightRAG
@@ -34,6 +33,10 @@ from .routers.document_routes import (
     DocumentManager,
     create_document_routes,
     run_scanning_process,
+)
+from lightrag.llm.azure_openai import (
+    azure_openai_complete_if_cache,
+    azure_openai_embed,
 )
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
@@ -105,26 +108,6 @@ def create_app(args):
     from lightrag.utils import set_verbose_debug
 
     set_verbose_debug(args.verbose)
-
-    # Verify that bindings are correctly setup
-    if args.llm_binding not in [
-        "lollms",
-        "ollama",
-        "openai",
-        "openai-ollama",
-        "azure_openai",
-    ]:
-        raise Exception("llm binding not supported")
-
-    if args.embedding_binding not in ["lollms", "ollama", "openai", "azure_openai"]:
-        raise Exception("embedding binding not supported")
-
-    # Set default hosts if not provided
-    if args.llm_binding_host is None:
-        args.llm_binding_host = get_default_host(args.llm_binding)
-
-    if args.embedding_binding_host is None:
-        args.embedding_binding_host = get_default_host(args.embedding_binding)
 
     # Add SSL validation
     if args.ssl:
@@ -223,42 +206,6 @@ def create_app(args):
 
     # Create working directory if it doesn't exist
     Path(args.working_dir).mkdir(parents=True, exist_ok=True)
-    if args.llm_binding == "lollms" or args.embedding_binding == "lollms":
-        from lightrag.llm.lollms import lollms_model_complete, lollms_embed
-    if args.llm_binding == "ollama" or args.embedding_binding == "ollama":
-        from lightrag.llm.ollama import ollama_model_complete, ollama_embed
-    if args.llm_binding == "openai" or args.embedding_binding == "openai":
-        from lightrag.llm.openai import openai_complete_if_cache, openai_embed
-    if args.llm_binding == "azure_openai" or args.embedding_binding == "azure_openai":
-        from lightrag.llm.azure_openai import (
-            azure_openai_complete_if_cache,
-            azure_openai_embed,
-        )
-    if args.llm_binding_host == "openai-ollama" or args.embedding_binding == "ollama":
-        from lightrag.llm.openai import openai_complete_if_cache
-        from lightrag.llm.ollama import ollama_embed
-
-    async def openai_alike_model_complete(
-        prompt,
-        system_prompt=None,
-        history_messages=None,
-        keyword_extraction=False,
-        **kwargs,
-    ) -> str:
-        keyword_extraction = kwargs.pop("keyword_extraction", None)
-        if keyword_extraction:
-            kwargs["response_format"] = GPTKeywordExtractionFormat
-        if history_messages is None:
-            history_messages = []
-        return await openai_complete_if_cache(
-            args.llm_model,
-            prompt,
-            system_prompt=system_prompt,
-            history_messages=history_messages,
-            base_url=args.llm_binding_host,
-            api_key=args.llm_binding_api_key,
-            **kwargs,
-        )
 
     async def azure_openai_model_complete(
         prompt,
@@ -286,104 +233,43 @@ def create_app(args):
     embedding_func = EmbeddingFunc(
         embedding_dim=args.embedding_dim,
         max_token_size=args.max_embed_tokens,
-        func=lambda texts: lollms_embed(
-            texts,
-            embed_model=args.embedding_model,
-            host=args.embedding_binding_host,
-            api_key=args.embedding_binding_api_key,
-        )
-        if args.embedding_binding == "lollms"
-        else ollama_embed(
-            texts,
-            embed_model=args.embedding_model,
-            host=args.embedding_binding_host,
-            api_key=args.embedding_binding_api_key,
-        )
-        if args.embedding_binding == "ollama"
-        else azure_openai_embed(
+        func=lambda texts: azure_openai_embed(
             texts,
             model=args.embedding_model,  # no host is used for openai,
             api_key=args.embedding_binding_api_key,
         )
-        if args.embedding_binding == "azure_openai"
-        else openai_embed(
-            texts,
-            model=args.embedding_model,
-            base_url=args.embedding_binding_host,
-            api_key=args.embedding_binding_api_key,
-        ),
     )
 
     # Initialize RAG
-    if args.llm_binding in ["lollms", "ollama", "openai"]:
-        rag = LightRAG(
-            working_dir=args.working_dir,
-            llm_model_func=lollms_model_complete
-            if args.llm_binding == "lollms"
-            else ollama_model_complete
-            if args.llm_binding == "ollama"
-            else openai_alike_model_complete,
-            llm_model_name=args.llm_model,
-            llm_model_max_async=args.max_async,
-            llm_model_max_token_size=args.max_tokens,
-            chunk_token_size=int(args.chunk_size),
-            chunk_overlap_token_size=int(args.chunk_overlap_size),
-            llm_model_kwargs={
-                "host": args.llm_binding_host,
-                "timeout": args.timeout,
-                "options": {"num_ctx": args.max_tokens},
-                "api_key": args.llm_binding_api_key,
-            }
-            if args.llm_binding == "lollms" or args.llm_binding == "ollama"
-            else {},
-            embedding_func=embedding_func,
-            kv_storage=args.kv_storage,
-            graph_storage=args.graph_storage,
-            vector_storage=args.vector_storage,
-            doc_status_storage=args.doc_status_storage,
-            vector_db_storage_cls_kwargs={
-                "cosine_better_than_threshold": args.cosine_threshold
-            },
-            enable_llm_cache_for_entity_extract=False,  # set to True for debuging to reduce llm fee
-            embedding_cache_config={
-                "enabled": True,
-                "similarity_threshold": 0.95,
-                "use_llm_check": False,
-            },
-            log_level=args.log_level,
-            namespace_prefix=args.namespace_prefix,
-            auto_manage_storages_states=False,
-        )
-    else:  # azure_openai
-        rag = LightRAG(
-            working_dir=args.working_dir,
-            llm_model_func=azure_openai_model_complete,
-            chunk_token_size=int(args.chunk_size),
-            chunk_overlap_token_size=int(args.chunk_overlap_size),
-            llm_model_kwargs={
-                "timeout": args.timeout,
-            },
-            llm_model_name=args.llm_model,
-            llm_model_max_async=args.max_async,
-            llm_model_max_token_size=args.max_tokens,
-            embedding_func=embedding_func,
-            kv_storage=args.kv_storage,
-            graph_storage=args.graph_storage,
-            vector_storage=args.vector_storage,
-            doc_status_storage=args.doc_status_storage,
-            vector_db_storage_cls_kwargs={
-                "cosine_better_than_threshold": args.cosine_threshold
-            },
-            enable_llm_cache_for_entity_extract=False,  # set to True for debuging to reduce llm fee
-            embedding_cache_config={
-                "enabled": True,
-                "similarity_threshold": 0.95,
-                "use_llm_check": False,
-            },
-            log_level=args.log_level,
-            namespace_prefix=args.namespace_prefix,
-            auto_manage_storages_states=False,
-        )
+    rag = LightRAG(
+        working_dir=args.working_dir,
+        llm_model_func=azure_openai_model_complete,
+        chunk_token_size=int(args.chunk_size),
+        chunk_overlap_token_size=int(args.chunk_overlap_size),
+        llm_model_kwargs={
+            "timeout": args.timeout,
+        },
+        llm_model_name=args.llm_model,
+        llm_model_max_async=args.max_async,
+        llm_model_max_token_size=args.max_tokens,
+        embedding_func=embedding_func,
+        kv_storage=args.kv_storage,
+        graph_storage=args.graph_storage,
+        vector_storage=args.vector_storage,
+        doc_status_storage=args.doc_status_storage,
+        vector_db_storage_cls_kwargs={
+            "cosine_better_than_threshold": args.cosine_threshold
+        },
+        enable_llm_cache_for_entity_extract=False,  # set to True for debuging to reduce llm fee
+        embedding_cache_config={
+            "enabled": True,
+            "similarity_threshold": 0.95,
+            "use_llm_check": False,
+        },
+        log_level=args.log_level,
+        namespace_prefix=args.namespace_prefix,
+        auto_manage_storages_states=False,
+    )
 
     # Add routes
     app.include_router(create_document_routes(rag, doc_manager, api_key))
