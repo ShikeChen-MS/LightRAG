@@ -448,6 +448,11 @@ def create_document_routes(
         Returns:
             dict: A dictionary containing the scanning status
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         async with progress_lock:
             if scan_progress["is_scanning"]:
                 return {"status": "already_scanning"}
@@ -473,6 +478,11 @@ def create_document_routes(
                 - total_files: Total number of files to process
                 - progress: Percentage of completion
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         async with progress_lock:
             return scan_progress
 
@@ -499,6 +509,11 @@ def create_document_routes(
         Raises:
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             if not doc_manager.is_supported_file(file.filename):
                 raise HTTPException(
@@ -547,6 +562,11 @@ def create_document_routes(
             HTTPException: If an error occurs during text processing (500).
         """
         try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        try:
             background_tasks.add_task(pipeline_index_texts, rag, [request.text])
             return InsertResponse(
                 status="success",
@@ -584,6 +604,11 @@ def create_document_routes(
             HTTPException: If an error occurs during text processing (500).
         """
         try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        try:
             background_tasks.add_task(pipeline_index_texts, rag, request.texts)
             return InsertResponse(
                 status="success",
@@ -618,6 +643,11 @@ def create_document_routes(
         Raises:
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             token = extract_token_value(user_access_token)
             access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
@@ -670,6 +700,11 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs during processing (500).
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             inserted_count = 0
             failed_files = []
@@ -724,6 +759,16 @@ def create_document_routes(
             HTTPException: If an error occurs during the clearing process (500).
         """
         try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        try:
             rag.text_chunks = []
             rag.entities_vdb = None
             rag.relationships_vdb = None
@@ -751,6 +796,11 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs while retrieving document statuses (500).
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             statuses = (
                 DocStatus.PENDING,
