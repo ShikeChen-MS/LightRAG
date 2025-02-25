@@ -1,12 +1,4 @@
 import os
-import pipmaster as pm  # Pipmaster for dynamic library install
-
-# install specific modules
-if not pm.is_installed("openai"):
-    pm.install("openai")
-if not pm.is_installed("tenacity"):
-    pm.install("tenacity")
-
 from openai import (
     AsyncAzureOpenAI,
     APIConnectionError,
@@ -25,7 +17,6 @@ from lightrag.utils import (
     locate_json_string_body_from_string,
     safe_unicode_decode,
 )
-
 import numpy as np
 
 
