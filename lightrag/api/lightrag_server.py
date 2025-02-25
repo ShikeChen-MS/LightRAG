@@ -1,10 +1,11 @@
 """
 LightRAG FastAPI Server
 """
-
 from fastapi import (
     FastAPI,
     Depends,
+    Header,
+    HTTPException,
 )
 from fastapi.responses import FileResponse
 import asyncio
@@ -25,15 +26,25 @@ from .utils_api import (
     display_splash_screen,
 )
 from lightrag import LightRAG
+from lightrag.azure_token_handler import (
+    AzureToken,
+    AzureTokenHandler,
+    TokenScope
+)
 from lightrag.types import GPTKeywordExtractionFormat
 from lightrag.api import __api_version__
-from lightrag.utils import EmbeddingFunc
-from lightrag.utils import logger
+from lightrag.utils import (
+    EmbeddingFunc,
+    logger,
+    extract_token_value
+)
+
 from .routers.document_routes import (
     DocumentManager,
     create_document_routes,
     run_scanning_process,
 )
+from lightrag.azure_token_handler import AzureToken
 from lightrag.llm.azure_openai import (
     azure_openai_complete_if_cache,
     azure_openai_embed,
@@ -209,6 +220,7 @@ def create_app(args):
 
     async def azure_openai_model_complete(
         prompt,
+        access_token: AzureToken = None,
         system_prompt=None,
         history_messages=None,
         keyword_extraction=False,
@@ -225,18 +237,19 @@ def create_app(args):
             system_prompt=system_prompt,
             history_messages=history_messages,
             base_url=args.llm_binding_host,
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview"),
+            access_token=access_token,
+            api_version=args.llm_api_version,
             **kwargs,
         )
 
     embedding_func = EmbeddingFunc(
         embedding_dim=args.embedding_dim,
         max_token_size=args.max_embed_tokens,
-        func=lambda texts: azure_openai_embed(
+        func=lambda texts, access_token: azure_openai_embed(
             texts,
             model=args.embedding_model,  # no host is used for openai,
-            api_key=args.embedding_binding_api_key,
+            access_token=access_token,
+            api_version=args.embedding_api_version
         )
     )
 
@@ -277,15 +290,22 @@ def create_app(args):
     app.include_router(create_graph_routes(rag, api_key))
 
     @app.get("/health", dependencies=[Depends(optional_api_key)])
-    async def get_status():
+    async def get_status(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
         """Get current system status"""
+        token = extract_token_value(user_access_token)
+        # Since this api doesn't really use any azure service
+        # We only attempt to acquire token here. If a token is generated
+        # we consider user is authenticated.
+        try:
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         return {
             "status": "healthy",
             "working_directory": str(args.working_dir),
             "input_directory": str(args.input_dir),
             "configuration": {
                 # LLM configuration binding/host address (if applicable)/model (if applicable)
-                "llm_binding": args.llm_binding,
                 "llm_binding_host": args.llm_binding_host,
                 "llm_model": args.llm_model,
                 # embedding model configuration binding/host address (if applicable)/model (if applicable)
@@ -318,6 +338,11 @@ def create_app(args):
 
 def main():
     args = parse_args()
+    AzureTokenHandler.set_client_information(
+        client_id=args.app_id,
+        client_secret=args.app_secret,
+        authority=args.app_authority,
+    )
     import uvicorn
     import logging.config
 

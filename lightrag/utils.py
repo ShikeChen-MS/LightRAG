@@ -11,12 +11,14 @@ import re
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
-from typing import Any, Callable
+from typing import Any, Callable, Awaitable
 import xml.etree.ElementTree as ET
 import numpy as np
 import tiktoken
 from lightrag.prompt import PROMPTS
 from dotenv import load_dotenv
+from lightrag.azure_token_handler import AzureToken
+from fastapi import HTTPException
 
 # Load environment variables
 load_dotenv(override=True)
@@ -101,7 +103,7 @@ def set_logger(log_file: str, level: int = logging.DEBUG):
 class EmbeddingFunc:
     embedding_dim: int
     max_token_size: int
-    func: callable
+    func: Callable[[list[str], AzureToken], Awaitable[np.ndarray]]
     # concurrent_limit: int = 16
 
     async def __call__(self, *args, **kwargs) -> np.ndarray:
@@ -764,6 +766,18 @@ def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
         asyncio.set_event_loop(new_loop)
         return new_loop
 
+def extract_token_value(authorization: str) -> str:
+    """Extract token value from authorization header"""
+    if not authorization:
+        raise HTTPException(
+            status_code=401, detail="Authorization header required"
+        )
+    token_parts = authorization.split()
+    if len(token_parts) != 2 or token_parts[0].lower() != "bearer":
+        raise HTTPException(
+            status_code=401, detail="Invalid Authorization header format"
+        )
+    return token_parts[1]
 
 def lazy_external_import(module_name: str, class_name: str) -> Callable[..., Any]:
     """Lazily import a class from an external module based on the package of the caller."""

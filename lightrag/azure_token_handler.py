@@ -30,6 +30,7 @@ class AzureToken:
 
 
 class OnBehalfTokenCredential(TokenCredential):
+
     def __init__(self, access_token: AzureToken):
         self.access_token = access_token
 
@@ -54,6 +55,12 @@ class AzureTokenHandler:
     __confidential_app = None
 
     @classmethod
+    def set_client_information(cls, client_id: str, client_secret: str, authority: str):
+        cls.__client_id = client_id
+        cls.__client_secret = client_secret
+        cls.__authority = authority
+
+    @classmethod
     def get_confidential_app(cls):
         if cls.__confidential_app is None:
             cls.__confidential_app = msal.ConfidentialClientApplication(
@@ -69,19 +76,25 @@ class AzureTokenHandler:
         # Acquire token on behalf of the user with scope to app itself
         # This will allow us to acquire token to any scope that
         # the app has access to with the refresh token we get
-        result = app.acquire_token_on_behalf_of(
-            user_assertion=access_token,
-            scopes=[f"{cls.__client_id}/.default offline_access"],
-        )
+        try:
+            result = app.acquire_token_on_behalf_of(
+                user_assertion=access_token,
+                scopes=[f"{cls.__client_id}/.default offline_access"],
+            )
+        except Exception as e:
+            raise ValueError(f"Error acquiring token: {str(e)}")
         if "error" in result:
             raise ValueError(f"Error acquiring token: {result['error_description']}")
         if "refresh_token" not in result:
             raise ValueError(
                 "Refresh token not found in the result while acquiring token by user token"
             )
-        token = app.acquire_token_by_refresh_token(
-            result.get("refresh_token"), [token_scope.value]
-        )
+        try:
+            token = app.acquire_token_by_refresh_token(
+                result.get("refresh_token"), [token_scope.value]
+            )
+        except Exception as e:
+            raise ValueError(f"Error acquiring token: {str(e)}")
         return AzureToken(
             token.get("access_token"), token.get("refresh_token"), token.get("expires_in"), token_scope
         )

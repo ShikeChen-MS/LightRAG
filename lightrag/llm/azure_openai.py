@@ -11,7 +11,11 @@ from tenacity import (
     wait_exponential,
     retry_if_exception_type,
 )
-
+from lightrag.azure_token_handler import (
+    AzureToken,
+    AzureTokenHandler,
+    TokenScope
+)
 from lightrag.utils import (
     wrap_embedding_func_with_attrs,
     locate_json_string_body_from_string,
@@ -33,21 +37,18 @@ async def azure_openai_complete_if_cache(
     system_prompt=None,
     history_messages=[],
     base_url=None,
-    api_key=None,
+    access_token: AzureToken=None,
     api_version=None,
     **kwargs,
 ):
-    if api_key:
-        os.environ["AZURE_OPENAI_API_KEY"] = api_key
-    if base_url:
-        os.environ["AZURE_OPENAI_ENDPOINT"] = base_url
-    if api_version:
-        os.environ["AZURE_OPENAI_API_VERSION"] = api_version
-
+    if not access_token.check_scope(TokenScope.CognitiveServices):
+        access_token = AzureTokenHandler.acquire_token_by_refresh_token(access_token.refresh_token, TokenScope.CognitiveServices)
+    else:
+        AzureTokenHandler.refresh_token_if_near_expire(access_token)
     openai_async_client = AsyncAzureOpenAI(
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_endpoint=base_url,
+        azure_ad_token= access_token.token,
+        api_version=api_version,
     )
     kwargs.pop("hashing_kv", None)
     messages = []
@@ -115,20 +116,17 @@ async def azure_openai_embed(
     texts: list[str],
     model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
     base_url: str = None,
-    api_key: str = None,
+    access_token: AzureToken = None,
     api_version: str = None,
 ) -> np.ndarray:
-    if api_key:
-        os.environ["AZURE_OPENAI_API_KEY"] = api_key
-    if base_url:
-        os.environ["AZURE_OPENAI_ENDPOINT"] = base_url
-    if api_version:
-        os.environ["AZURE_OPENAI_API_VERSION"] = api_version
-
+    if not access_token.check_scope(TokenScope.CognitiveServices):
+        access_token = AzureTokenHandler.acquire_token_by_refresh_token(access_token.refresh_token, TokenScope.CognitiveServices)
+    else:
+        AzureTokenHandler.refresh_token_if_near_expire(access_token)
     openai_async_client = AsyncAzureOpenAI(
-        azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-        api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
+        azure_endpoint=base_url,
+        azure_ad_token=access_token,
+        api_version=api_version,
     )
 
     response = await openai_async_client.embeddings.create(

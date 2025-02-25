@@ -251,11 +251,17 @@ def parse_args() -> argparse.Namespace:
 
     args.llm_binding_host = get_env_value("AZURE_OPENAI_ENDPOINT", None)
     args.embedding_binding_host = get_env_value("AZURE_OPENAI_EMBEDDING_ENDPOINT", None)
+    args.llm_api_version = get_env_value("AZURE_OPENAI_API_VERSION", None)
     # Inject model configuration
     args.llm_model = get_env_value("AZURE_OPENAI_MODEL_NAME", None)
     args.embedding_model = get_env_value("AZURE_OPENAI_EMDEDDING_MODEL_NAME", None)
+    args.embedding_api_version = get_env_value("AZURE_OPENAI_EMBEDDING_API_VERSION", None)
     args.embedding_dim = get_env_value("EMBEDDING_DIM", 1024, int)
     args.max_embed_tokens = get_env_value("MAX_EMBED_TOKENS", 8192, int)
+
+    args.app_id = get_env_value("AZURE_APP_CLIENT_ID", None)
+    args.app_secret = get_env_value("AZURE_APP_CLIENT_SECRET", None)
+    args.app_authority = get_env_value("AZURE_APP_AUTHORITY", None)
 
     # Inject chunk configuration
     args.chunk_size = get_env_value("CHUNK_SIZE", 1200, int)
