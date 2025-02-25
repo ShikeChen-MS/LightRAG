@@ -5,8 +5,11 @@ future
 
 # Basic modules
 adlfs
+azure-storage-blob
+azure-core
 numpy
 networkx
+openai
 pipmaster
 pydantic
 python-dotenv
