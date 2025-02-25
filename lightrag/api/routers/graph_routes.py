@@ -36,7 +36,7 @@ def create_graph_routes(rag, api_key: Optional[str] = None):
     optional_api_key = get_api_key_dependency(api_key)
 
     @router.get("/graph/label/list", dependencies=[Depends(optional_api_key)])
-    async def get_graph_labels(user_access_token: str = Header(None, alias="Azure_Ad_Token")user_access_token: str = Header(None, alias="Azure_Ad_Token")):
+    async def get_graph_labels(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
         """Get all graph labels"""
         # In case of networkx implementation, graph db (as a file) has already been loaded
         # into memory, there's no actual authentication needed. Therefore, we'll be trying to acquire
@@ -50,14 +50,16 @@ def create_graph_routes(rag, api_key: Optional[str] = None):
 
     @router.get("/graphs", dependencies=[Depends(optional_api_key)])
     async def get_knowledge_graph(
-        
             label: str,
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
-    ,
-        max_depth: int = 3,
-        user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            max_depth: int = 3,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
     ):
         """Get knowledge graph for a specific label"""
-        return await rag.get_knowledge_graph(node_label=label, max_depth=3)
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        return await rag.get_knowledge_graph(node_label=label, max_depth=max_depth)
 
     return router
