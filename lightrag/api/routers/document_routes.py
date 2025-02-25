@@ -437,7 +437,10 @@ def create_document_routes(
     optional_api_key = get_api_key_dependency(api_key)
 
     @router.post("/scan", dependencies=[Depends(optional_api_key)])
-    async def scan_for_new_documents(background_tasks: BackgroundTasks):
+    async def scan_for_new_documents(
+            background_tasks: BackgroundTasks,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+    ):
         """
         Trigger the scanning process for new documents.
 
@@ -466,7 +469,7 @@ def create_document_routes(
         return {"status": "scanning_started"}
 
     @router.get("/scan-progress")
-    async def get_scan_progress():
+    async def get_scan_progress(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
         """
         Get the current progress of the document scanning process.
 
@@ -680,7 +683,9 @@ def create_document_routes(
         dependencies=[Depends(optional_api_key)],
     )
     async def insert_batch(
-        background_tasks: BackgroundTasks, files: List[UploadFile] = File(...)
+            background_tasks: BackgroundTasks,
+            files: List[UploadFile] = File(...),
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
     ):
         """
         Process multiple files in batch mode.
@@ -758,11 +763,6 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs during the clearing process (500).
         """
-        try:
-            token = extract_token_value(user_access_token)
-            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
-        except Exception as e:
-            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             token = extract_token_value(user_access_token)
             access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)

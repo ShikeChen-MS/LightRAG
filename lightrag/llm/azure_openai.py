@@ -114,7 +114,7 @@ async def azure_openai_complete(
 )
 async def azure_openai_embed(
     texts: list[str],
-    model: str = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
+    model: str = None,
     base_url: str = None,
     access_token: AzureToken = None,
     api_version: str = None,

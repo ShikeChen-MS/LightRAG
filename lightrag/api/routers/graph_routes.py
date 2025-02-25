@@ -9,19 +9,7 @@ from fastapi import(
     Header,
     HTTPException,
 )
-from fastapi import(
-    APIRouter,
-    Depends,
-    Header,
-    HTTPException,
-)
 from ..utils_api import get_api_key_dependency
-from lightrag.utils import extract_token_value
-from lightrag.azure_token_handler import (
-    AzureToken,
-    AzureTokenHandler,
-    TokenScope,
-)
 from lightrag.utils import extract_token_value
 from lightrag.azure_token_handler import (
     AzureToken,
