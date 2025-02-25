@@ -6,11 +6,21 @@ import json
 import logging
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import(
+    APIRouter,
+    Depends,
+    HTTPException,
+    Header,
+)
 from lightrag.base import QueryParam
 from ..utils_api import get_api_key_dependency
 from pydantic import BaseModel, Field, field_validator
-
+from lightrag.utils import extract_token_value
+from lightrag.azure_token_handler import (
+    AzureToken,
+    AzureTokenHandler,
+    TokenScope,
+)
 from ascii_colors import trace_exception
 
 router = APIRouter(tags=["query"])
@@ -144,7 +154,10 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
     )
-    async def query_text(request: QueryRequest):
+    async def query_text(
+            request: QueryRequest,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+    ):
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
 
@@ -159,6 +172,11 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             HTTPException: Raised when an error occurs during the request handling process,
                        with status code 500 and detail containing the exception message.
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             param = request.to_query_params(False)
             response = await rag.aquery(request.query, param=param)
@@ -177,7 +195,10 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
-    async def query_text_stream(request: QueryRequest):
+    async def query_text_stream(
+            request: QueryRequest,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+    ):
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
 
@@ -188,6 +209,11 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         Returns:
             StreamingResponse: A streaming response containing the RAG query results.
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             param = request.to_query_params(True)
             response = await rag.aquery(request.query, param=param)

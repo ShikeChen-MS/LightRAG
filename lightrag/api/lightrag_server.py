@@ -292,11 +292,11 @@ def create_app(args):
     @app.get("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
         """Get current system status"""
-        token = extract_token_value(user_access_token)
         # Since this api doesn't really use any azure service
         # We only attempt to acquire token here. If a token is generated
         # we consider user is authenticated.
         try:
+            token = extract_token_value(user_access_token)
             access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")

@@ -12,10 +12,22 @@ import pipmaster as pm
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from lightrag.utils import extract_token_value
+from fastapi import(
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+    Header
+)
+from lightrag.azure_token_handler import (
+    AzureToken,
+    AzureTokenHandler,
+    TokenScope,
+)
 from pydantic import BaseModel, Field, field_validator
-
 from lightrag import LightRAG
 from lightrag.base import DocProcessingStatus, DocStatus
 from ..utils_api import get_api_key_dependency
@@ -257,8 +269,8 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
                 doc = Document(docx_file)
                 content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
             case ".pptx":
-                if not pm.is_installed("pptx"):
-                    pm.install("pptx")
+                if not pm.is_installed("python-pptx"):
+                    pm.install("python-pptx")
                 from pptx import Presentation
                 from io import BytesIO
 
@@ -466,7 +478,9 @@ def create_document_routes(
 
     @router.post("/upload", dependencies=[Depends(optional_api_key)])
     async def upload_to_input_dir(
-        background_tasks: BackgroundTasks, file: UploadFile = File(...)
+            background_tasks: BackgroundTasks,
+            file: UploadFile = File(...),
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
     ):
         """
         Upload a file to the input directory and index it.
@@ -512,7 +526,9 @@ def create_document_routes(
         "/text", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def insert_text(
-        request: InsertTextRequest, background_tasks: BackgroundTasks
+            request: InsertTextRequest,
+            background_tasks: BackgroundTasks,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
     ):
         """
         Insert text into the RAG system.
@@ -547,7 +563,9 @@ def create_document_routes(
         dependencies=[Depends(optional_api_key)],
     )
     async def insert_texts(
-        request: InsertTextsRequest, background_tasks: BackgroundTasks
+            request: InsertTextsRequest,
+            background_tasks: BackgroundTasks,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
     ):
         """
         Insert multiple texts into the RAG system.
@@ -580,7 +598,9 @@ def create_document_routes(
         "/file", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def insert_file(
-        background_tasks: BackgroundTasks, file: UploadFile = File(...)
+            background_tasks: BackgroundTasks,
+            file: UploadFile = File(...),
+            user_access_token: str = Header(None, alias="Azure_Ad_Token")
     ):
         """
         Insert a file directly into the RAG system.
@@ -598,6 +618,11 @@ def create_document_routes(
         Raises:
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
+        try:
+            token = extract_token_value(user_access_token)
+            access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
             if not doc_manager.is_supported_file(file.filename):
                 raise HTTPException(
@@ -685,7 +710,7 @@ def create_document_routes(
     @router.delete(
         "", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
-    async def clear_documents():
+    async def clear_documents(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
         """
         Clear all documents from the RAG system.
 
@@ -711,7 +736,7 @@ def create_document_routes(
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.get("", dependencies=[Depends(optional_api_key)])
-    async def documents() -> DocsStatusesResponse:
+    async def documents(user_access_token: str = Header(None, alias="Azure_Ad_Token")) -> DocsStatusesResponse:
         """
         Get the status of all documents in the system.
 
