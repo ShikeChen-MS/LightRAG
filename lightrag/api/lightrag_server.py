@@ -148,40 +148,8 @@ def create_app(args):
         """Lifespan context manager for startup and shutdown events"""
         # Store background tasks
         app.state.background_tasks = set()
-
-        try:
-            # Initialize database connections
-            await rag.initialize_storages()
-
-            # Auto scan documents if enabled
-            if args.auto_scan_at_startup:
-                # Start scanning in background
-                with progress_lock:
-                    if not scan_progress["is_scanning"]:
-                        scan_progress["is_scanning"] = True
-                        scan_progress["indexed_count"] = 0
-                        scan_progress["progress"] = 0
-                        # Create background task
-                        task = asyncio.create_task(
-                            run_scanning_process(rag, doc_manager)
-                        )
-                        app.state.background_tasks.add(task)
-                        task.add_done_callback(app.state.background_tasks.discard)
-                        ASCIIColors.info(
-                            f"Started background scanning of documents from {args.input_dir}"
-                        )
-                    else:
-                        ASCIIColors.info(
-                            "Skip document scanning(another scanning is active)"
-                        )
-
-            ASCIIColors.green("\nServer is ready to accept connections! 🚀\n")
-
-            yield
-
-        finally:
-            # Clean up database connections
-            await rag.finalize_storages()
+        yield
+        pass
 
     # Initialize FastAPI
     app = FastAPI(

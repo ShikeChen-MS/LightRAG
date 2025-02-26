@@ -72,7 +72,10 @@ class LightRAG:
     """
 
     storage_connection_string: str = None
-    """Directory where cache and temporary files are stored."""
+    """Azure Storage Account connection string."""
+
+    storage_container_name: str = None
+    """Azure Storage Account container name."""
 
     # Storage
     # ---

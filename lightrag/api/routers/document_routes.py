@@ -3,6 +3,7 @@ This module contains all document-related routes for the LightRAG API.
 """
 
 import asyncio
+import json
 import logging
 import os
 import aiofiles
@@ -13,6 +14,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from lightrag.utils import extract_token_value
+from fastapi.responses import JSONResponse
+from lightrag.base_requestbody import BaseRequest
 from fastapi import(
     APIRouter,
     BackgroundTasks,
@@ -31,7 +34,7 @@ from lightrag.api.raginstancemanager import RAGInstanceManager
 from pydantic import BaseModel, Field, field_validator
 from lightrag import LightRAG
 from lightrag.base import DocProcessingStatus, DocStatus
-from ..utils_api import get_api_key_dependency
+from ..utils_api import get_api_key_dependency, prepare_rag_instance
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -439,8 +442,10 @@ def create_document_routes(
 
     @router.post("/scan", dependencies=[Depends(optional_api_key)])
     async def scan_for_new_documents(
+            base_request: BaseRequest,
             background_tasks: BackgroundTasks,
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Trigger the scanning process for new documents.
@@ -472,7 +477,11 @@ def create_document_routes(
         return {"status": "scanning_started"}
 
     @router.get("/scan-progress")
-    async def get_scan_progress(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
+    async def get_scan_progress(
+            base_request: BaseRequest,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+    ):
         """
         Get the current progress of the document scanning process.
 
@@ -494,9 +503,11 @@ def create_document_routes(
 
     @router.post("/upload", dependencies=[Depends(optional_api_key)])
     async def upload_to_input_dir(
+            base_request: BaseRequest,
             background_tasks: BackgroundTasks,
             file: UploadFile = File(...),
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Upload a file to the input directory and index it.
@@ -521,6 +532,7 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             if not doc_manager.is_supported_file(file.filename):
                 raise HTTPException(
                     status_code=400,
@@ -533,10 +545,11 @@ def create_document_routes(
 
             # Add to background tasks
             background_tasks.add_task(pipeline_index_file, rag, file_path)
-
-            return InsertResponse(
-                status="success",
-                message=f"File '{file.filename}' uploaded successfully. Processing will continue in background.",
+            return JSONResponse(content={
+                "status": "success",
+                "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background.",
+                },
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
         except Exception as e:
             logging.error(f"Error /documents/upload: {file.filename}: {str(e)}")
@@ -547,9 +560,11 @@ def create_document_routes(
         "/text", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def insert_text(
+            base_request: BaseRequest,
             request: InsertTextRequest,
             background_tasks: BackgroundTasks,
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Insert text into the RAG system.
@@ -573,10 +588,13 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             background_tasks.add_task(pipeline_index_texts, rag, [request.text])
-            return InsertResponse(
-                status="success",
-                message="Text successfully received. Processing will continue in background.",
+            return JSONResponse(content={
+                "status": "success",
+                "message": "Text successfully received. Processing will continue in background.",
+                },
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
         except Exception as e:
             logging.error(f"Error /documents/text: {str(e)}")
@@ -589,9 +607,11 @@ def create_document_routes(
         dependencies=[Depends(optional_api_key)],
     )
     async def insert_texts(
+            base_request: BaseRequest,
             request: InsertTextsRequest,
             background_tasks: BackgroundTasks,
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Insert multiple texts into the RAG system.
@@ -615,10 +635,13 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             background_tasks.add_task(pipeline_index_texts, rag, request.texts)
-            return InsertResponse(
-                status="success",
-                message="Text successfully received. Processing will continue in background.",
+            return JSONResponse(content={
+                "status": "success",
+                "message": "Text successfully received. Processing will continue in background.",
+                },
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
         except Exception as e:
             logging.error(f"Error /documents/text: {str(e)}")
@@ -629,9 +652,11 @@ def create_document_routes(
         "/file", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def insert_file(
+            base_request: BaseRequest,
             background_tasks: BackgroundTasks,
             file: UploadFile = File(...),
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Insert a file directly into the RAG system.
@@ -660,6 +685,7 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             if not doc_manager.is_supported_file(file.filename):
                 raise HTTPException(
                     status_code=400,
@@ -671,9 +697,11 @@ def create_document_routes(
             # Add to background tasks
             background_tasks.add_task(pipeline_index_file, rag, temp_path)
 
-            return InsertResponse(
-                status="success",
-                message=f"File '{file.filename}' saved successfully. Processing will continue in background.",
+            return JSONResponse(content={
+                "status": "success",
+                "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background.",
+                },
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
         except Exception as e:
             logging.error(f"Error /documents/file: {str(e)}")
@@ -686,9 +714,11 @@ def create_document_routes(
         dependencies=[Depends(optional_api_key)],
     )
     async def insert_batch(
+            base_request: BaseRequest,
             background_tasks: BackgroundTasks,
             files: List[UploadFile] = File(...),
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Process multiple files in batch mode.
@@ -714,6 +744,7 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             inserted_count = 0
             failed_files = []
             temp_files = []
@@ -744,7 +775,12 @@ def create_document_routes(
                 if failed_files:
                     status_message += f". Failed files: {', '.join(failed_files)}"
 
-            return InsertResponse(status=status, message=status_message)
+            return JSONResponse(content={
+                "status": status,
+                "message": status_message,
+            },
+                headers={"X-Affinity-Token": rag.affinity_token},
+            )
         except Exception as e:
             logging.error(f"Error /documents/batch: {str(e)}")
             logging.error(traceback.format_exc())
@@ -753,7 +789,11 @@ def create_document_routes(
     @router.delete(
         "", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
-    async def clear_documents(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
+    async def clear_documents(
+            base_request: BaseRequest,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+    ):
         """
         Clear all documents from the RAG system.
 
@@ -772,11 +812,15 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             rag.text_chunks = []
             rag.entities_vdb = None
             rag.relationships_vdb = None
-            return InsertResponse(
-                status="success", message="All documents cleared successfully"
+            return JSONResponse(content={
+                "status": "success",
+                "message": "All documents cleared successfully",
+            },
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
         except Exception as e:
             logging.error(f"Error DELETE /documents: {str(e)}")
@@ -784,7 +828,11 @@ def create_document_routes(
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.get("", dependencies=[Depends(optional_api_key)])
-    async def documents(user_access_token: str = Header(None, alias="Azure_Ad_Token")) -> DocsStatusesResponse:
+    async def documents(
+            base_request: BaseRequest,
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+    ) -> JSONResponse:
         """
         Get the status of all documents in the system.
 
@@ -805,6 +853,7 @@ def create_document_routes(
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             statuses = (
                 DocStatus.PENDING,
                 DocStatus.PROCESSING,
@@ -839,7 +888,8 @@ def create_document_routes(
                             metadata=doc_status.metadata,
                         )
                     )
-            return response
+            res = json.dumps(response, indent=2)
+            return JSONResponse(content=res, headers={"X-Affinity-Token": rag.affinity_token})
         except Exception as e:
             logging.error(f"Error GET /documents: {str(e)}")
             logging.error(traceback.format_exc())

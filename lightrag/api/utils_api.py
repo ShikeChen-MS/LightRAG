@@ -19,6 +19,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 
 from lightrag.api.raginstancemanager import RAGInstanceManager
 from lightrag.base_requestbody import BaseRequest
+from lightrag.utils import always_get_an_event_loop
 
 # Load environment variables
 load_dotenv(override=True)
@@ -282,7 +283,7 @@ def calcuate_rag_id(connection_str:str, container_name: str):
     connection_str += container_name
     connection_str = connection_str.lower()
     hash_object = hashlib.sha256(connection_str.encode())
-    unique_id = hash_object.hexdigest()[:11]
+    unique_id = hash_object.hexdigest()[:13]
     return unique_id
 
 def prepare_rag_instance(ragmanager:RAGInstanceManager, base_request: BaseRequest, affinity_token: str) -> LightRAG:
@@ -294,11 +295,12 @@ def prepare_rag_instance(ragmanager:RAGInstanceManager, base_request: BaseReques
             if all(value is None for value in base_request.model_dump().values()):
                 raise HTTPException(status_code=400, detail=f"Invalid affinity token; {str(e)}")
     if affinity_token is None:
-        affinity_token = str(uuid.uuid4())
+        affinity_token = calcuate_rag_id(base_request.storage_connection_string, base_request.storage_container_name)
     rag_id = calcuate_rag_id(base_request.storage_connection_string, base_request.storage_container_name)
     rag = ragmanager.instance.get_rag_instance(
         rag_id,
         base_request.storage_connection_string,
+        base_request.storage_container_name,
         base_request.embedding_endpoint,
         base_request.embedding_api_version,
         base_request.embedding_dimension,
