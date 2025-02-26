@@ -27,6 +27,7 @@ from lightrag.azure_token_handler import (
     AzureTokenHandler,
     TokenScope,
 )
+from lightrag.api.raginstancemanager import RAGInstanceManager
 from pydantic import BaseModel, Field, field_validator
 from lightrag import LightRAG
 from lightrag.base import DocProcessingStatus, DocStatus
@@ -432,7 +433,7 @@ async def run_scanning_process(rag: LightRAG, doc_manager: DocumentManager):
 
 
 def create_document_routes(
-    rag: LightRAG, doc_manager: DocumentManager, api_key: Optional[str] = None
+    ragmanager: RAGInstanceManager, doc_manager: DocumentManager, api_key: Optional[str] = None
 ):
     optional_api_key = get_api_key_dependency(api_key)
 
@@ -456,6 +457,8 @@ def create_document_routes(
             access_token: AzureToken = AzureTokenHandler.acquire_token_by_user_token(token, TokenScope.CognitiveServices)
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+        # TODO: Finish this method
+        rag = ragmanager.get_rag_instance()
         async with progress_lock:
             if scan_progress["is_scanning"]:
                 return {"status": "already_scanning"}

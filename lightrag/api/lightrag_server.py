@@ -44,6 +44,7 @@ from .routers.document_routes import (
     create_document_routes,
     run_scanning_process,
 )
+from lightrag.api.raginstancemanager import RAGInstanceManager
 from lightrag.azure_token_handler import AzureToken
 from lightrag.llm.azure_openai import (
     azure_openai_complete_if_cache,
@@ -217,77 +218,11 @@ def create_app(args):
 
     # Create working directory if it doesn't exist
     Path(args.working_dir).mkdir(parents=True, exist_ok=True)
-
-    async def azure_openai_model_complete(
-        prompt,
-        access_token: AzureToken = None,
-        system_prompt=None,
-        history_messages=None,
-        keyword_extraction=False,
-        **kwargs,
-    ) -> str:
-        keyword_extraction = kwargs.pop("keyword_extraction", None)
-        if keyword_extraction:
-            kwargs["response_format"] = GPTKeywordExtractionFormat
-        if history_messages is None:
-            history_messages = []
-        return await azure_openai_complete_if_cache(
-            args.llm_model,
-            prompt,
-            system_prompt=system_prompt,
-            history_messages=history_messages,
-            base_url=args.llm_binding_host,
-            access_token=access_token,
-            api_version=args.llm_api_version,
-            **kwargs,
-        )
-
-    embedding_func = EmbeddingFunc(
-        embedding_dim=args.embedding_dim,
-        max_token_size=args.max_embed_tokens,
-        func=lambda texts, access_token: azure_openai_embed(
-            texts,
-            model=args.embedding_model,  # no host is used for openai,
-            access_token=access_token,
-            api_version=args.embedding_api_version
-        )
-    )
-
-    # Initialize RAG
-    rag = LightRAG(
-        working_dir=args.working_dir,
-        llm_model_func=azure_openai_model_complete,
-        chunk_token_size=int(args.chunk_size),
-        chunk_overlap_token_size=int(args.chunk_overlap_size),
-        llm_model_kwargs={
-            "timeout": args.timeout,
-        },
-        llm_model_name=args.llm_model,
-        llm_model_max_async=args.max_async,
-        llm_model_max_token_size=args.max_tokens,
-        embedding_func=embedding_func,
-        kv_storage=args.kv_storage,
-        graph_storage=args.graph_storage,
-        vector_storage=args.vector_storage,
-        doc_status_storage=args.doc_status_storage,
-        vector_db_storage_cls_kwargs={
-            "cosine_better_than_threshold": args.cosine_threshold
-        },
-        enable_llm_cache_for_entity_extract=False,  # set to True for debuging to reduce llm fee
-        embedding_cache_config={
-            "enabled": True,
-            "similarity_threshold": 0.95,
-            "use_llm_check": False,
-        },
-        log_level=args.log_level,
-        namespace_prefix=args.namespace_prefix,
-        auto_manage_storages_states=False,
-    )
-
+    rag_manager = RAGInstanceManager(args=args)
     # Add routes
-    app.include_router(create_document_routes(rag, doc_manager, api_key))
-    app.include_router(create_query_routes(rag, api_key, args.top_k))
-    app.include_router(create_graph_routes(rag, api_key))
+    app.include_router(create_document_routes(rag_manager, doc_manager, api_key))
+    app.include_router(create_query_routes(rag_manager, api_key, args.top_k))
+    app.include_router(create_graph_routes(rag_manager, api_key))
 
     @app.get("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(user_access_token: str = Header(None, alias="Azure_Ad_Token")):
@@ -338,6 +273,7 @@ def create_app(args):
 
 def main():
     args = parse_args()
+
     AzureTokenHandler.set_client_information(
         client_id=args.app_id,
         client_secret=args.app_secret,

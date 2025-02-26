@@ -5,15 +5,16 @@ This module contains all query-related routes for the LightRAG API.
 import json
 import logging
 from typing import Any, Dict, List, Literal, Optional
-
+from lightrag.base_requestbody import BaseRequest
 from fastapi import(
     APIRouter,
     Depends,
     HTTPException,
     Header,
 )
+from fastapi.responses import JSONResponse
 from lightrag.base import QueryParam
-from ..utils_api import get_api_key_dependency
+from ..utils_api import get_api_key_dependency, calcuate_rag_id, prepare_rag_instance
 from pydantic import BaseModel, Field, field_validator
 from lightrag.utils import extract_token_value
 from lightrag.azure_token_handler import (
@@ -22,6 +23,7 @@ from lightrag.azure_token_handler import (
     TokenScope,
 )
 from ascii_colors import trace_exception
+from lightrag.api.raginstancemanager import RAGInstanceManager
 
 router = APIRouter(tags=["query"])
 
@@ -148,15 +150,17 @@ class QueryResponse(BaseModel):
     )
 
 
-def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
+def create_query_routes(ragmanager: RAGInstanceManager, api_key: Optional[str] = None, top_k: int = 60):
     optional_api_key = get_api_key_dependency(api_key)
 
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
     )
     async def query_text(
+            base_request: BaseRequest,
             request: QueryRequest,
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
@@ -178,26 +182,29 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             param = request.to_query_params(False)
             response = await rag.aquery(request.query, param=param)
 
             # If response is a string (e.g. cache hit), return directly
             if isinstance(response, str):
-                return QueryResponse(response=response)
+                return JSONResponse(content={"response": response}, headers={"X-Affinity-Token": rag.affinity_token})
 
             if isinstance(response, dict):
                 result = json.dumps(response, indent=2)
-                return QueryResponse(response=result)
+                return JSONResponse(content={"response": result}, headers={"X-Affinity-Token": rag.affinity_token})
             else:
-                return QueryResponse(response=str(response))
+                return JSONResponse(content={"response": str(response)}, headers={"X-Affinity-Token": rag.affinity_token})
         except Exception as e:
             trace_exception(e)
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
     async def query_text_stream(
+            base_request: BaseRequest,
             request: QueryRequest,
-            user_access_token: str = Header(None, alias="Azure_Ad_Token")
+            user_access_token: str = Header(None, alias="Azure_Ad_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
     ):
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
@@ -215,6 +222,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
         try:
+            rag = prepare_rag_instance(ragmanager, base_request, X_Affinity_Token)
             param = request.to_query_params(True)
             response = await rag.aquery(request.query, param=param)
 
@@ -241,6 +249,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "Content-Type": "application/x-ndjson",
+                    "X-Affinity-Token": rag.affinity_token,
                     "X-Accel-Buffering": "no",  # Ensure proper handling of streaming response when proxied by Nginx
                 },
             )

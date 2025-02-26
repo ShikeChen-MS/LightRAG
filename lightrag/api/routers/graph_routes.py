@@ -20,7 +20,7 @@ from lightrag.azure_token_handler import (
 router = APIRouter(tags=["graph"])
 
 
-def create_graph_routes(rag, api_key: Optional[str] = None):
+def create_graph_routes(ragmanager, api_key: Optional[str] = None):
     optional_api_key = get_api_key_dependency(api_key)
 
     @router.get("/graph/label/list", dependencies=[Depends(optional_api_key)])

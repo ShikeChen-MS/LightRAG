@@ -103,7 +103,7 @@ def set_logger(log_file: str, level: int = logging.DEBUG):
 class EmbeddingFunc:
     embedding_dim: int
     max_token_size: int
-    func: Callable[[list[str], AzureToken], Awaitable[np.ndarray]]
+    func: Callable[[list[str], str], Awaitable[np.ndarray]]
     # concurrent_limit: int = 16
 
     async def __call__(self, *args, **kwargs) -> np.ndarray:

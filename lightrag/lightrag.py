@@ -13,7 +13,7 @@ from lightrag.kg import (
     STORAGES,
     verify_storage_implementation,
 )
-
+from lightrag.azure_token_handler import AzureToken
 from .base import (
     BaseGraphStorage,
     BaseKVStorage,
@@ -65,10 +65,13 @@ class LightRAG:
 
     # Directory
     # ---
+    affinity_token: str = field(default=None)
+    """
+    Unique token for identifying the current instance of LightRAG.
+    This serves as affinity token to ensure ops target same graph db will always reach same instance.
+    """
 
-    working_dir: str = field(
-        default=f"./lightrag_cache_{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}"
-    )
+    storage_connection_string: str = None
     """Directory where cache and temporary files are stored."""
 
     # Storage
@@ -267,13 +270,7 @@ class LightRAG:
     _storages_status: StoragesStatus = field(default=StoragesStatus.NOT_CREATED)
 
     def __post_init__(self):
-        os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)
         set_logger(self.log_file_path, self.log_level)
-        logger.info(f"Logger initialized for working directory: {self.working_dir}")
-
-        if not os.path.exists(self.working_dir):
-            logger.info(f"Creating working directory {self.working_dir}")
-            os.makedirs(self.working_dir)
 
         # Verify storage implementation compatibility and environment variables
         storage_configs = [
@@ -506,6 +503,7 @@ class LightRAG:
     async def ainsert(
         self,
         input: str | list[str],
+        access_token: AzureToken,
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
         ids: list[str] | None = None,
@@ -519,17 +517,27 @@ class LightRAG:
             split_by_character is None, this parameter is ignored.
             ids: list of unique document IDs, if not provided, MD5 hash IDs will be generated
         """
-        await self.apipeline_enqueue_documents(input, ids)
+        await self.apipeline_enqueue_documents(access_token, input, ids)
         await self.apipeline_process_enqueue_documents(
-            split_by_character, split_by_character_only
+            access_token,
+            split_by_character,
+            split_by_character_only
         )
 
-    def insert_custom_chunks(self, full_text: str, text_chunks: list[str]) -> None:
+    def insert_custom_chunks(
+        self,
+        access_token: AzureToken,
+        full_text: str,
+        text_chunks: list[str]
+    ) -> None:
         loop = always_get_an_event_loop()
-        loop.run_until_complete(self.ainsert_custom_chunks(full_text, text_chunks))
+        loop.run_until_complete(self.ainsert_custom_chunks(access_token,full_text, text_chunks))
 
     async def ainsert_custom_chunks(
-        self, full_text: str, text_chunks: list[str]
+        self,
+        access_token: AzureToken,
+        full_text: str,
+        text_chunks: list[str]
     ) -> None:
         update_storage = False
         try:
@@ -570,7 +578,7 @@ class LightRAG:
 
             tasks = [
                 self.chunks_vdb.upsert(inserting_chunks),
-                self._process_entity_relation_graph(inserting_chunks),
+                self._process_entity_relation_graph(access_token,inserting_chunks),
                 self.full_docs.upsert(new_docs),
                 self.text_chunks.upsert(inserting_chunks),
             ]
@@ -581,7 +589,10 @@ class LightRAG:
                 await self._insert_done()
 
     async def apipeline_enqueue_documents(
-        self, input: str | list[str], ids: list[str] | None = None
+        self,
+        access_token: AzureToken,
+        input: str | list[str],
+        ids: list[str] | None = None
     ) -> None:
         """
         Pipeline for Processing Documents
@@ -652,6 +663,7 @@ class LightRAG:
 
     async def apipeline_process_enqueue_documents(
         self,
+        access_token: AzureToken,
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
     ) -> None:
@@ -733,7 +745,7 @@ class LightRAG:
                             }
                         ),
                         self.chunks_vdb.upsert(chunks),
-                        self._process_entity_relation_graph(chunks),
+                        self._process_entity_relation_graph(access_token, chunks),
                         self.full_docs.upsert(
                             {doc_id: {"content": status_doc.content}}
                         ),
@@ -777,9 +789,10 @@ class LightRAG:
         await asyncio.gather(*batches)
         await self._insert_done()
 
-    async def _process_entity_relation_graph(self, chunk: dict[str, Any]) -> None:
+    async def _process_entity_relation_graph(self, access_token: AzureToken, chunk: dict[str, Any]) -> None:
         try:
             await extract_entities(
+                access_token,
                 chunk,
                 knowledge_graph_inst=self.chunk_entity_relation_graph,
                 entity_vdb=self.entities_vdb,

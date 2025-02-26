@@ -3,15 +3,22 @@ Utility functions for the LightRAG API.
 """
 
 import os
+import hashlib
 import argparse
+import uuid
 from typing import Optional
 import sys
 from ascii_colors import ASCIIColors
+
+from lightrag import LightRAG
 from lightrag.api import __api_version__
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
+
+from lightrag.api.raginstancemanager import RAGInstanceManager
+from lightrag.base_requestbody import BaseRequest
 
 # Load environment variables
 load_dotenv(override=True)
@@ -269,6 +276,40 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
+def calcuate_rag_id(connection_str:str, container_name: str):
+    if not connection_str.endswith("/"):
+        connection_str += "/"
+    connection_str += container_name
+    connection_str = connection_str.lower()
+    hash_object = hashlib.sha256(connection_str.encode())
+    unique_id = hash_object.hexdigest()[:11]
+    return unique_id
+
+def prepare_rag_instance(ragmanager:RAGInstanceManager, base_request: BaseRequest, affinity_token: str) -> LightRAG:
+    if affinity_token:
+        try:
+            rag = ragmanager.get_rag_instance_by_affinity_token(affinity_token)
+            return rag
+        except Exception as e:
+            if all(value is None for value in base_request.model_dump().values()):
+                raise HTTPException(status_code=400, detail=f"Invalid affinity token; {str(e)}")
+    if affinity_token is None:
+        affinity_token = str(uuid.uuid4())
+    rag_id = calcuate_rag_id(base_request.storage_connection_string, base_request.storage_container_name)
+    rag = ragmanager.instance.get_rag_instance(
+        rag_id,
+        base_request.storage_connection_string,
+        base_request.embedding_endpoint,
+        base_request.embedding_api_version,
+        base_request.embedding_dimension,
+        base_request.max_embedding_tokens,
+        base_request.embedding_model,
+        base_request.llm_model,
+        base_request.llm_endpoint,
+        base_request.llm_api_version,
+        affinity_token,
+    )
+    return rag
 
 def display_splash_screen(args: argparse.Namespace) -> None:
     """

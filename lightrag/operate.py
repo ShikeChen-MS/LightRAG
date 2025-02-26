@@ -5,7 +5,7 @@ import json
 import re
 from typing import Any, AsyncIterator
 from collections import Counter, defaultdict
-
+from lightrag.azure_token_handler import AzureToken
 from .utils import (
     logger,
     clean_str,
@@ -100,6 +100,7 @@ def chunking_by_token_size(
 
 
 async def _handle_entity_relation_summary(
+    access_token: AzureToken,
     entity_or_relation_name: str,
     description: str,
     global_config: dict,
@@ -130,7 +131,7 @@ async def _handle_entity_relation_summary(
     )
     use_prompt = prompt_template.format(**context_base)
     logger.debug(f"Trigger summary: {entity_or_relation_name}")
-    summary = await use_llm_func(use_prompt, max_tokens=summary_max_tokens)
+    summary = await use_llm_func(use_prompt, access_token=access_token, max_tokens=summary_max_tokens)
     return summary
 
 
@@ -183,6 +184,7 @@ async def _handle_single_relationship_extraction(
 
 
 async def _merge_nodes_then_upsert(
+    access_token: AzureToken,
     entity_name: str,
     nodes_data: list[dict],
     knowledge_graph_inst: BaseGraphStorage,
@@ -215,7 +217,7 @@ async def _merge_nodes_then_upsert(
         set([dp["source_id"] for dp in nodes_data] + already_source_ids)
     )
     description = await _handle_entity_relation_summary(
-        entity_name, description, global_config
+        access_token, entity_name, description, global_config
     )
     node_data = dict(
         entity_type=entity_type,
@@ -231,6 +233,7 @@ async def _merge_nodes_then_upsert(
 
 
 async def _merge_edges_then_upsert(
+    access_token: AzureToken,
     src_id: str,
     tgt_id: str,
     edges_data: list[dict],
@@ -305,7 +308,7 @@ async def _merge_edges_then_upsert(
                 },
             )
     description = await _handle_entity_relation_summary(
-        f"({src_id}, {tgt_id})", description, global_config
+        access_token, f"({src_id}, {tgt_id})", description, global_config
     )
     await knowledge_graph_inst.upsert_edge(
         src_id,
@@ -329,6 +332,7 @@ async def _merge_edges_then_upsert(
 
 
 async def extract_entities(
+    access_token: AzureToken,
     chunks: dict[str, TextChunkSchema],
     knowledge_graph_inst: BaseGraphStorage,
     entity_vdb: BaseVectorStorage,
@@ -410,10 +414,10 @@ async def extract_entities(
             statistic_data["llm_call"] += 1
             if history_messages:
                 res: str = await use_llm_func(
-                    input_text, history_messages=history_messages
+                    input_text, access_token=access_token, history_messages=history_messages
                 )
             else:
-                res: str = await use_llm_func(input_text)
+                res: str = await use_llm_func(input_text, access_token=access_token)
             await save_to_cache(
                 llm_response_cache,
                 CacheData(
@@ -426,9 +430,9 @@ async def extract_entities(
             return res
 
         if history_messages:
-            return await use_llm_func(input_text, history_messages=history_messages)
+            return await use_llm_func(input_text, access_token=access_token, history_messages=history_messages)
         else:
-            return await use_llm_func(input_text)
+            return await use_llm_func(input_text, access_token=access_token)
 
     async def _process_single_content(chunk_key_dp: tuple[str, TextChunkSchema]):
         """ "Prpocess a single chunk
@@ -514,14 +518,14 @@ async def extract_entities(
 
     all_entities_data = await asyncio.gather(
         *[
-            _merge_nodes_then_upsert(k, v, knowledge_graph_inst, global_config)
+            _merge_nodes_then_upsert(access_token, k, v, knowledge_graph_inst, global_config)
             for k, v in maybe_nodes.items()
         ]
     )
 
     all_relationships_data = await asyncio.gather(
         *[
-            _merge_edges_then_upsert(k[0], k[1], v, knowledge_graph_inst, global_config)
+            _merge_edges_then_upsert(access_token, k[0], k[1], v, knowledge_graph_inst, global_config)
             for k, v in maybe_edges.items()
         ]
     )
