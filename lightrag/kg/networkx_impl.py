@@ -1,6 +1,7 @@
 import os
 from dataclasses import dataclass
 from typing import Any, final
+from azure.storage.blob import BlobServiceClient
 
 import numpy as np
 
@@ -75,18 +76,30 @@ class NetworkXStorage(BaseGraphStorage):
         return fixed_graph
 
     def __post_init__(self):
-        self._graphml_xml_file = os.path.join(
-            self.global_config["working_dir"], f"graph_{self.namespace}.graphml"
+        self._graph = None
+
+    async def initialize(self) -> None:
+        connection_str = self.global_config["storage_connection_string"]
+        container_name = self.global_config["storage_container_name"]
+        blob_service_client = BlobServiceClient.from_connection_string(
+            connection_str
         )
-        preloaded_graph = NetworkXStorage.load_nx_graph(self._graphml_xml_file)
-        if preloaded_graph is not None:
+        container_client = blob_service_client.get_container_client(container_name)
+        blobs = container_client.list_blobs()
+        if not f"graph_{self.namespace}.graphml" in [b.name for b in blobs]:
             logger.info(
-                f"Loaded graph from {self._graphml_xml_file} with {preloaded_graph.number_of_nodes()} nodes, {preloaded_graph.number_of_edges()} edges"
+                f"Graph {self.namespace} not found in blob storage, creating a new one"
             )
-        self._graph = preloaded_graph or nx.Graph()
-        self._node_embed_algorithms = {
-            "node2vec": self._node2vec_embed,
-        }
+            self._graph = nx.Graph()
+        else:
+            logger.info(
+                f"Graph {self.namespace} found in blob storage, loading from blob"
+            )
+            blob_client = container_client.get_blob_client(
+                f"graph_{self.namespace}.graphml"
+            )
+            blob_content = blob_client.download_blob().readall()
+            self._graph = nx.parse_graphml(blob_content.decode("utf-8"))
 
     async def index_done_callback(self) -> None:
         NetworkXStorage.write_nx_graph(self._graph, self._graphml_xml_file)

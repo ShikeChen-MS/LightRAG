@@ -1,6 +1,7 @@
 from typing import Optional, Any
 import msal
 import enum
+import jwt
 from datetime import datetime, timedelta, timezone
 from azure.core.credentials import TokenCredential, AccessToken
 
@@ -27,7 +28,6 @@ class AzureToken:
 
     def check_scope(self, token_scope: TokenScope):
         return self.token_scope.name == token_scope.name
-
 
 class OnBehalfTokenCredential(TokenCredential):
 
