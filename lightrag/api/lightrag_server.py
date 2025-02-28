@@ -1,6 +1,7 @@
 """
 LightRAG FastAPI Server
 """
+import json
 
 from fastapi import (
     FastAPI,
@@ -8,7 +9,6 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from lightrag.api.rag_instance_manager import RAGInstanceManager
-import asyncio
 import threading
 import os
 from fastapi.staticfiles import StaticFiles
@@ -16,11 +16,6 @@ import logging
 from typing import Dict
 from pathlib import Path
 import configparser
-from lightrag.llm.azure_openai import (
-    azure_openai_complete_if_cache,
-    azure_openai_embed,
-)
-from ascii_colors import ASCIIColors
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -30,18 +25,15 @@ from .utils_api import (
     get_default_host,
     display_splash_screen,
 )
-from lightrag import LightRAG
-from lightrag.types import GPTKeywordExtractionFormat
 from lightrag.api import __api_version__
-from lightrag.utils import EmbeddingFunc
 from lightrag.utils import logger
 from .routers.document_routes import (
     DocumentManager,
     create_document_routes,
-    run_scanning_process,
 )
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
+
 # Load environment variables
 try:
     load_dotenv(override=True)
@@ -202,22 +194,8 @@ def create_app(args, rag_instance_manager):
         """Get current system status"""
         return {
             "status": "healthy",
-            "working_directory": str(args.working_dir),
-            "input_directory": str(args.input_dir),
             "configuration": {
-                # LLM configuration binding/host address (if applicable)/model (if applicable)
-                "llm_binding": args.llm_binding,
-                "llm_binding_host": args.llm_binding_host,
-                "llm_model": args.llm_model,
-                # embedding model configuration binding/host address (if applicable)/model (if applicable)
-                "embedding_binding": args.embedding_binding,
-                "embedding_binding_host": args.embedding_binding_host,
-                "embedding_model": args.embedding_model,
-                "max_tokens": args.max_tokens,
-                "kv_storage": args.kv_storage,
-                "doc_status_storage": args.doc_status_storage,
-                "graph_storage": args.graph_storage,
-                "vector_storage": args.vector_storage,
+                json.dumps(args)
             },
         }
 
