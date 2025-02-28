@@ -1,6 +1,5 @@
 import asyncio
 from dataclasses import dataclass
-import os
 from typing import Any, Union, final
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from lightrag.az_token_credential import LighRagTokenCredential
@@ -12,7 +11,6 @@ from lightrag.base import (
 from lightrag.utils import (
     load_json,
     logger,
-    write_json,
 )
 
 
