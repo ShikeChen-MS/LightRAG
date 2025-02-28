@@ -176,6 +176,24 @@ class NanoVectorDBStorage(BaseVectorStorage):
         except Exception as e:
             logger.error(f"Error deleting relations for {entity_name}: {e}")
 
-    async def index_done_callback(self) -> None:
+    async def index_done_callback(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LighRagTokenCredential
+    ) -> None:
         async with self._save_lock:
-            self._client.save()
+            json_data = self._client.save()
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
+        )
+        container_client = blob_client.get_container_client(storage_container_name)
+        # this is to check if the container exists and authentication is valid
+        container_client.get_container_properties()
+        # to protect file integrity and ensure complete upload
+        # acquire lease on the container to prevent any other ops
+        lease: BlobLeaseClient = container_client.acquire_lease()
+        blob_name = f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
+        blob_client = container_client.get_blob_client(blob_name)
+        blob_client.upload_blob(json_data, lease=lease, overwrite=True)
+        lease.release()

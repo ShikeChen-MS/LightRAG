@@ -292,11 +292,14 @@ def initialize_rag(rag_instance_manager, base_request, x_affinity_token, storage
             rag = rag_instance_manager.get_lightrag(
                 storage_account_url=base_request.storage_account_url,
                 storage_container_name=base_request.storage_container_name,
-                access_token=LighRagTokenCredential(storage_access_token, base_request.storage_token_expiry)
+                access_token=get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry),
             )
         return rag
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def get_lightrag_token_credential(storage_access_token, storage_token_expiry):
+    return LighRagTokenCredential(storage_access_token, storage_token_expiry)
 
 def display_splash_screen(args: argparse.Namespace) -> None:
     """

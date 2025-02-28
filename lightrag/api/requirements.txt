@@ -1,6 +1,7 @@
 aiofiles
 ascii_colors
 fastapi
+graspologic
 numpy
 pipmaster
 python-dotenv

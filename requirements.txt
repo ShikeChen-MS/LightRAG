@@ -7,9 +7,9 @@ numpy
 pipmaster
 pydantic
 python-dotenv
-msal
 azure-storage-blob
 azure-core
+networkx
 
 
 setuptools

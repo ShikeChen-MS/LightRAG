@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 import os
 from typing import Any, Union, final
@@ -21,6 +22,7 @@ class JsonDocStatusStorage(DocStatusStorage):
     """JSON implementation of document status storage"""
     def __init__(self):
         self._data = None
+        self._lock = asyncio.Lock()
 
     async def initialize(
             self,
@@ -86,8 +88,26 @@ class JsonDocStatusStorage(DocStatusStorage):
                     continue
         return result
 
-    async def index_done_callback(self) -> None:
-        write_json(self._data, self._file_name)
+    async def index_done_callback(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LighRagTokenCredential
+    ) -> None:
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
+        )
+        container_client = blob_client.get_container_client(storage_container_name)
+        # this is to check if the container exists and authentication is valid
+        container_client.get_container_properties()
+        # to protect file integrity and ensure complete upload
+        # acquire lease on the container to prevent any other ops
+        lease: BlobLeaseClient = container_client.acquire_lease()
+        blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
+        blob_client = container_client.get_blob_client(blob_name)
+        with self._lock:
+            blob_client.upload_blob(self._data, lease=lease, overwrite=True)
+        lease.release()
 
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         logger.info(f"Inserting {len(data)} to {self.namespace}")

@@ -92,7 +92,8 @@ class StorageNameSpace(ABC):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential) -> None:
+            access_token: LighRagTokenCredential
+    ) -> None:
         """Initialize the storage"""
         pass
 
@@ -101,7 +102,12 @@ class StorageNameSpace(ABC):
         pass
 
     @abstractmethod
-    async def index_done_callback(self) -> None:
+    async def index_done_callback(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LighRagTokenCredential
+    ) -> None:
         """Commit the storage operations after indexing"""
 
 
