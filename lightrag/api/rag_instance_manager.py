@@ -38,15 +38,16 @@ class RAGInstanceManager:
     ) -> LightRAG:
         async with self._lock:
             # calculating the hash of storage account url + container name
-            # and take first 13 characters as the id, this also serves as
-            # affinity token; given that same storage account url + container name
+            # and take the hash(since SHA256 has fixed length of 64 characters as the id,
+            # this also serves as affinity token;
+            # given that same storage account url + container name
             # will always point to one LightRAG storage.
             if not storage_account_url.endswith("/"):
                 connection_str = storage_account_url + "/"
             connection_str += storage_container_name
             connection_str = connection_str.lower()
             hash_object = hashlib.sha256(connection_str.encode())
-            rag_id = hash_object.hexdigest()[:13]
+            rag_id = hash_object.hexdigest()
             if rag_id in self.rag_instances:
                 return self.rag_instances[rag_id]
             else:

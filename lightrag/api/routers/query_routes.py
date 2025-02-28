@@ -5,10 +5,8 @@ This module contains all query-related routes for the LightRAG API.
 import json
 import logging
 from lightrag.api.base_request import BaseRequest
-from lightrag.api.rag_instance_manager import RAGInstanceManager
-from lightrag.az_token_credential import LighRagTokenCredential
 from typing import Any, Dict, List, Literal, Optional
-
+from fastapi.responses import JSONResponse
 from fastapi import(
     APIRouter,
     Depends,
@@ -20,6 +18,8 @@ from ..utils_api import get_api_key_dependency, initialize_rag
 from pydantic import BaseModel, Field, field_validator
 
 from ascii_colors import trace_exception
+
+from ... import LightRAG
 
 router = APIRouter(tags=["query"])
 
@@ -175,7 +175,7 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
         """
         try:
             param = request.to_query_params(False)
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag: LightRAG = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
             response = await rag.aquery(request.query, param=param)
 
             # If response is a string (e.g. cache hit), return directly
@@ -184,9 +184,9 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
 
             if isinstance(response, dict):
                 result = json.dumps(response, indent=2)
-                return QueryResponse(response=result)
+                return JSONResponse(content=result, headers={"X-Affinity-Token": rag.affinity_token})
             else:
-                return QueryResponse(response=str(response))
+                return JSONResponse(content=str(response), headers={"X-Affinity-Token": rag.affinity_token})
         except Exception as e:
             trace_exception(e)
             raise HTTPException(status_code=500, detail=str(e))
@@ -237,6 +237,7 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "Content-Type": "application/x-ndjson",
+                    "X-Affinity-Token": rag.affinity_token,
                     "X-Accel-Buffering": "no",  # Ensure proper handling of streaming response when proxied by Nginx
                 },
             )
