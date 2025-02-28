@@ -266,8 +266,8 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
                 doc = Document(docx_file)
                 content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
             case ".pptx":
-                if not pm.is_installed("pptx"):
-                    pm.install("pptx")
+                if not pm.is_installed("python-pptx"):
+                    pm.install("python-pptx")
                 from pptx import Presentation
                 from io import BytesIO
 
