@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from typing import Dict
 
-from lightrag.az_token_credential import LighRagTokenCredential
+from lightrag.az_token_credential import LightRagTokenCredential
 from lightrag import LightRAG
 from lightrag.llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
 from lightrag.types import GPTKeywordExtractionFormat
@@ -12,21 +12,30 @@ class RAGInstanceManager:
     instance = None
     _lock = asyncio.Lock()
 
+    # Singleton pattern
+    # preserve one instance of RAGInstanceManager under instance variable
     def __new__(cls, *args, **kwargs):
         if cls.instance is None:
+            # Only when instance is None, we actually create a new instance
             cls.instance = super(RAGInstanceManager, cls).__new__(cls)
         return cls.instance
 
     def __init__(self, *args, **kwargs):
+        # use _initialized to avoid re-initialization
+        # so any attempt to create new instance after first time
+        # will not only end up get the first instance created
+        # but also the class variables will remain unchanged
         if not hasattr(self, "_initialized"):
             self._initialized = True
             self.rag_instances: Dict[str, LightRAG] = {}
+            # use kwargs to accept named arguments
+            # here we take the args from argparser
             self.args = kwargs["args"]
 
     async def get_rag_instance(self,
         storage_account_url: str,
         storage_container_name: str,
-        access_token: LighRagTokenCredential
+        access_token: LightRagTokenCredential
     ) -> LightRAG:
         async with self._lock:
             # calculating the hash of storage account url + container name
