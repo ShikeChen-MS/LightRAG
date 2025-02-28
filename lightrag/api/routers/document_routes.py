@@ -1,7 +1,6 @@
 """
 This module contains all document-related routes for the LightRAG API.
 """
-
 import asyncio
 import logging
 import os
@@ -24,7 +23,6 @@ from fastapi import(
     Header
 )
 from pydantic import BaseModel, Field, field_validator
-
 from lightrag import LightRAG
 from lightrag.base import DocProcessingStatus, DocStatus
 from ..utils_api import get_api_key_dependency, initialize_rag
