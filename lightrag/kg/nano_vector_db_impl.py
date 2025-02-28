@@ -3,7 +3,8 @@ import os
 from typing import Any, final
 from dataclasses import dataclass
 import numpy as np
-
+from azure.storage.blob import BlobServiceClient, BlobLeaseClient
+from lightrag.az_token_credential import LighRagTokenCredential
 import time
 
 from lightrag.utils import (
@@ -14,19 +15,17 @@ import pipmaster as pm
 from lightrag.base import (
     BaseVectorStorage,
 )
-
-if not pm.is_installed("nano-vectordb"):
-    pm.install("nano-vectordb")
-
-from nano_vectordb import NanoVectorDB
+from lightrag.kg.nanovectordbs import NanoVectorDB
 
 
 @final
 @dataclass
 class NanoVectorDBStorage(BaseVectorStorage):
-    def __post_init__(self):
-        # Initialize lock only for file operations
+    def __init__(self):
+        self._client = None
         self._save_lock = asyncio.Lock()
+
+    def __post_init__(self):
         # Use global config value if specified, otherwise use default
         kwargs = self.global_config.get("vector_db_storage_cls_kwargs", {})
         cosine_threshold = kwargs.get("cosine_better_than_threshold")
@@ -35,14 +34,40 @@ class NanoVectorDBStorage(BaseVectorStorage):
                 "cosine_better_than_threshold must be specified in vector_db_storage_cls_kwargs"
             )
         self.cosine_better_than_threshold = cosine_threshold
-
-        self._client_file_name = os.path.join(
-            self.global_config["working_dir"], f"vdb_{self.namespace}.json"
-        )
         self._max_batch_size = self.global_config["embedding_batch_num"]
         self._client = NanoVectorDB(
             self.embedding_func.embedding_dim, storage_file=self._client_file_name
         )
+
+    async def initialize(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LighRagTokenCredential) -> None:
+        try:
+            blob_client = BlobServiceClient(
+                account_url=storage_account_url, credential=access_token
+            )
+            container_client = blob_client.get_container_client(storage_container_name)
+            container_client.get_container_properties() # this is to check if the container exists and authentication is valid
+            # to prevent the file from being modified while trying to read
+            # we acquire a lease to make sure no ops is performing on the file
+            lease: BlobLeaseClient = container_client.acquire_lease()
+            blob_list = container_client.list_blob_names()
+            blob_name = f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
+            if not blob_name in blob_list:
+                logger.info(f"Creating new vdb_{self.namespace}.json")
+                self._client = NanoVectorDB(self.embedding_func.embedding_dim)
+                return
+            content = container_client.get_blob_client(blob_name).download_blob().readall()
+            lease.release()
+            content_str = content.decode('utf-8')
+            self._client = NanoVectorDB(
+                self.embedding_func.embedding_dim, storage_data=content_str
+            )
+        except Exception as e:
+            logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
+            raise
 
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         logger.info(f"Inserting {len(data)} to {self.namespace}")

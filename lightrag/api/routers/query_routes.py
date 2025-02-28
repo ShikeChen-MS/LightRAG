@@ -4,11 +4,19 @@ This module contains all query-related routes for the LightRAG API.
 
 import json
 import logging
+from lightrag.api.base_request import BaseRequest
+from lightrag.api.rag_instance_manager import RAGInstanceManager
+from lightrag.az_token_credential import LighRagTokenCredential
 from typing import Any, Dict, List, Literal, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import(
+    APIRouter,
+    Depends,
+    HTTPException,
+    Header,
+)
 from lightrag.base import QueryParam
-from ..utils_api import get_api_key_dependency
+from ..utils_api import get_api_key_dependency, initialize_rag
 from pydantic import BaseModel, Field, field_validator
 
 from ascii_colors import trace_exception
@@ -138,13 +146,19 @@ class QueryResponse(BaseModel):
     )
 
 
-def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
+def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top_k: int = 60):
     optional_api_key = get_api_key_dependency(api_key)
 
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
     )
-    async def query_text(request: QueryRequest):
+    async def query_text(
+        base_request: BaseRequest,
+        request: QueryRequest,
+        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+    ):
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
 
@@ -161,6 +175,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         """
         try:
             param = request.to_query_params(False)
+            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
             response = await rag.aquery(request.query, param=param)
 
             # If response is a string (e.g. cache hit), return directly
@@ -177,7 +192,13 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
-    async def query_text_stream(request: QueryRequest):
+    async def query_text_stream(
+            base_request: BaseRequest,
+            request: QueryRequest,
+            ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
+            storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+    ):
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
 
@@ -190,6 +211,7 @@ def create_query_routes(rag, api_key: Optional[str] = None, top_k: int = 60):
         """
         try:
             param = request.to_query_params(True)
+            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
             response = await rag.aquery(request.query, param=param)
 
             from fastapi.responses import StreamingResponse

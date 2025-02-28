@@ -12,6 +12,7 @@ from typing import (
     TypeVar,
 )
 import numpy as np
+from lightrag.az_token_credential import LighRagTokenCredential
 from .utils import EmbeddingFunc
 from .types import KnowledgeGraph
 
@@ -87,7 +88,11 @@ class StorageNameSpace(ABC):
     namespace: str
     global_config: dict[str, Any]
 
-    async def initialize(self):
+    async def initialize(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LighRagTokenCredential) -> None:
         """Initialize the storage"""
         pass
 
@@ -262,5 +267,6 @@ class StoragesStatus(str, Enum):
 
     NOT_CREATED = "not_created"
     CREATED = "created"
+    INITIALIZING = "initializing"
     INITIALIZED = "initialized"
     FINALIZED = "finalized"

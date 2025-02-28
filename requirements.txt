@@ -7,6 +7,10 @@ numpy
 pipmaster
 pydantic
 python-dotenv
+msal
+azure-storage-blob
+azure-core
+
 
 setuptools
 tenacity

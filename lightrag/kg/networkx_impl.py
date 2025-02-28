@@ -3,8 +3,8 @@ from dataclasses import dataclass
 from typing import Any, final
 
 import numpy as np
-
-
+from azure.storage.blob import BlobServiceClient, BlobLeaseClient
+from lightrag.az_token_credential import LighRagTokenCredential
 from lightrag.types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
 from lightrag.utils import (
     logger,
@@ -28,6 +28,9 @@ from graspologic import embed
 @final
 @dataclass
 class NetworkXStorage(BaseGraphStorage):
+    def __init__(self):
+        self._graph = None
+
     @staticmethod
     def load_nx_graph(file_name) -> nx.Graph:
         if os.path.exists(file_name):
@@ -75,18 +78,37 @@ class NetworkXStorage(BaseGraphStorage):
         return fixed_graph
 
     def __post_init__(self):
-        self._graphml_xml_file = os.path.join(
-            self.global_config["working_dir"], f"graph_{self.namespace}.graphml"
-        )
-        preloaded_graph = NetworkXStorage.load_nx_graph(self._graphml_xml_file)
-        if preloaded_graph is not None:
-            logger.info(
-                f"Loaded graph from {self._graphml_xml_file} with {preloaded_graph.number_of_nodes()} nodes, {preloaded_graph.number_of_edges()} edges"
-            )
-        self._graph = preloaded_graph or nx.Graph()
         self._node_embed_algorithms = {
             "node2vec": self._node2vec_embed,
         }
+
+    async def initialize(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LighRagTokenCredential) -> None:
+        try:
+            blob_client = BlobServiceClient(
+                account_url=storage_account_url, credential=access_token
+            )
+            container_client = blob_client.get_container_client(storage_container_name)
+            container_client.get_container_properties() # this is to check if the container exists and authentication is valid
+            lease: BlobLeaseClient = container_client.acquire_lease()
+            blob_list = container_client.list_blob_names()
+            blob_name = f"{self.global_config["working_dir"]}/data/graph_{self.namespace}.graphml"
+            if not blob_name in blob_list:
+                logger.info(f"Creating new graph_{self.namespace}.graphml")
+                self._graph = nx.Graph()
+                return
+            content = container_client.get_blob_client(blob_name).download_blob().readall()
+            lease.release()
+            content_str = content.decode('utf-8')
+            preloaded_graph = nx.parse_graphml(content_str)
+            self._graph = preloaded_graph
+        except Exception as e:
+            logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
+            raise
+
 
     async def index_done_callback(self) -> None:
         NetworkXStorage.write_nx_graph(self._graph, self._graphml_xml_file)

@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
-from typing import Any, Callable
+from typing import Any, Callable, Awaitable
 import xml.etree.ElementTree as ET
 import numpy as np
 import tiktoken
@@ -101,7 +101,7 @@ def set_logger(log_file: str, level: int = logging.DEBUG):
 class EmbeddingFunc:
     embedding_dim: int
     max_token_size: int
-    func: callable
+    func: Callable[[list[str], str], Awaitable[np.ndarray]]
     # concurrent_limit: int = 16
 
     async def __call__(self, *args, **kwargs) -> np.ndarray:

@@ -6,6 +6,7 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
+from lightrag.az_token_credential import LighRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final
 
 from lightrag.kg import (
@@ -63,16 +64,29 @@ config.read("config.ini", "utf-8")
 class LightRAG:
     """LightRAG: Simple and Fast Retrieval-Augmented Generation."""
 
+    # each instance of LightRAG will be dedicated to specific storage
+    # which in turn target to specific set of users, therefore, affinity token
+    # stays same for all these users given this instance can handle all these requests
+    # without further initializing more LightRAG instances
+    affinity_token: str = field(default=None)
+    """Affinity token for stickiness"""
+
     # Directory
     # ---
 
     working_dir: str = field(
-        default=f"./lightrag_cache_{datetime.now().strftime('%Y-%m-%d-%H:%M:%S')}"
+        default="./lightrag"
     )
     """Directory where cache and temporary files are stored."""
 
     # Storage
     # ---
+
+    storage_account_url: str = field(default=None)
+    """Storage account url for Azure Blob Storage."""
+
+    storage_container_name: str = field(default=None)
+    """Storage container name for Azure Blob Storage."""
 
     kv_storage: str = field(default="JsonKVStorage")
     """Storage backend for key-value data."""
@@ -245,7 +259,7 @@ class LightRAG:
     # Storages Management
     # ---
 
-    auto_manage_storages_states: bool = field(default=True)
+    auto_manage_storages_states: bool = field(default=False)
     """If True, lightrag will automatically calls initialize_storages and finalize_storages at the appropriate times."""
 
     # Storages Management
@@ -404,12 +418,15 @@ class LightRAG:
 
         self._storages_status = StoragesStatus.CREATED
 
-        if self.auto_manage_storages_states:
-            self._run_async_safely(self.initialize_storages, "Storage Initialization")
+        #if self.auto_manage_storages_states:
+            #self._run_async_safely(self.initialize_storages, "Storage Initialization")
 
     def __del__(self):
         if self.auto_manage_storages_states:
             self._run_async_safely(self.finalize_storages, "Storage Finalization")
+
+    def check_storage_status(self):
+        return self._storages_status.value
 
     def _run_async_safely(self, async_func, action_name=""):
         """Safely execute an async function, avoiding event loop conflicts."""
@@ -430,7 +447,7 @@ class LightRAG:
             loop.run_until_complete(async_func())
             loop.close()
 
-    async def initialize_storages(self):
+    async def initialize_storages(self, storage_token: LighRagTokenCredential):
         """Asynchronously initialize the storages"""
         if self._storages_status == StoragesStatus.CREATED:
             tasks = []
@@ -446,8 +463,8 @@ class LightRAG:
                 self.doc_status,
             ):
                 if storage:
-                    tasks.append(storage.initialize())
-
+                    tasks.append(storage.initialize(self.storage_account_url, self.storage_container_name, storage_token))
+            self._storages_status = StoragesStatus.INITIALIZING
             await asyncio.gather(*tasks)
 
             self._storages_status = StoragesStatus.INITIALIZED

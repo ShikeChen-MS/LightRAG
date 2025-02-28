@@ -12,7 +12,7 @@ from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
-
+from lightrag.az_token_credential import LighRagTokenCredential
 # Load environment variables
 load_dotenv(override=True)
 
@@ -135,18 +135,6 @@ def parse_args() -> argparse.Namespace:
         help="Server port (default: from env or 9621)",
     )
 
-    # Directory configuration
-    parser.add_argument(
-        "--working-dir",
-        default=get_env_value("WORKING_DIR", "./rag_storage"),
-        help="Working directory for RAG storage (default: from env or ./rag_storage)",
-    )
-    parser.add_argument(
-        "--input-dir",
-        default=get_env_value("INPUT_DIR", "./inputs"),
-        help="Directory containing input documents (default: from env or ./inputs)",
-    )
-
     def timeout_type(value):
         if value is None:
             return 150
@@ -235,16 +223,6 @@ def parse_args() -> argparse.Namespace:
         help="Cosine similarity threshold (default: from env or 0.4)",
     )
 
-    # Ollama model name
-    parser.add_argument(
-        "--simulated-model-name",
-        type=str,
-        default=get_env_value(
-            "SIMULATED_MODEL_NAME", ollama_server_infos.LIGHTRAG_MODEL
-        ),
-        help="Number of conversation history turns to include (default: from env or 3)",
-    )
-
     # Namespace
     parser.add_argument(
         "--namespace-prefix",
@@ -260,14 +238,6 @@ def parse_args() -> argparse.Namespace:
         help="Enable automatic scanning when the program starts",
     )
 
-    # LLM and embedding bindings
-    parser.add_argument(
-        "--llm-binding",
-        type=str,
-        default=get_env_value("LLM_BINDING", "ollama"),
-        choices=["lollms", "ollama", "openai", "openai-ollama", "azure_openai"],
-        help="LLM binding type (default: from env or ollama)",
-    )
     parser.add_argument(
         "--embedding-binding",
         type=str,
@@ -296,23 +266,13 @@ def parse_args() -> argparse.Namespace:
         "LIGHTRAG_VECTOR_STORAGE", DefaultRAGStorageConfig.VECTOR_STORAGE
     )
 
-    # Handle openai-ollama special case
-    if args.llm_binding == "openai-ollama":
-        args.llm_binding = "openai"
-        args.embedding_binding = "ollama"
-
-    args.llm_binding_host = get_env_value(
-        "LLM_BINDING_HOST", get_default_host(args.llm_binding)
-    )
-    args.embedding_binding_host = get_env_value(
-        "EMBEDDING_BINDING_HOST", get_default_host(args.embedding_binding)
-    )
-    args.llm_binding_api_key = get_env_value("LLM_BINDING_API_KEY", None)
-    args.embedding_binding_api_key = get_env_value("EMBEDDING_BINDING_API_KEY", "")
-
+    args.llm_binding_host = get_env_value("AZURE_OPENAI_ENDPOINT",None)
+    args.embedding_binding_host = get_env_value("AZURE_OPENAI_EMBEDDING_ENDPOINT", None)
+    args.llm_api_version = get_env_value("AZURE_OPENAI_API_VERSION", None)
+    args.embedding_api_version = get_env_value("AZURE_OPENAI_EMBEDDING_API_VERSION", None)
     # Inject model configuration
-    args.llm_model = get_env_value("LLM_MODEL", "mistral-nemo:latest")
-    args.embedding_model = get_env_value("EMBEDDING_MODEL", "bge-m3:latest")
+    args.llm_model = get_env_value("AZURE_OPENAI_MODEL_NAME", None)
+    args.embedding_model = get_env_value("AZURE_OPENAI_EMDEDDING_MODEL_NAME", None)
     args.embedding_dim = get_env_value("EMBEDDING_DIM", 1024, int)
     args.max_embed_tokens = get_env_value("MAX_EMBED_TOKENS", 8192, int)
 
@@ -324,6 +284,19 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
+def initialize_rag(rag_instance_manager, base_request, x_affinity_token, storage_access_token):
+    try:
+        if x_affinity_token:
+            rag = rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
+        else:
+            rag = rag_instance_manager.get_lightrag(
+                storage_account_url=base_request.storage_account_url,
+                storage_container_name=base_request.storage_container_name,
+                access_token=LighRagTokenCredential(storage_access_token, base_request.storage_token_expiry)
+            )
+        return rag
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 def display_splash_screen(args: argparse.Namespace) -> None:
     """
