@@ -12,7 +12,7 @@ from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
-from lightrag.az_token_credential import LighRagTokenCredential
+from lightrag.az_token_credential import LightRagTokenCredential
 # Load environment variables
 load_dotenv(override=True)
 
@@ -299,7 +299,7 @@ def initialize_rag(rag_instance_manager, base_request, x_affinity_token, storage
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_lightrag_token_credential(storage_access_token, storage_token_expiry):
-    return LighRagTokenCredential(storage_access_token, storage_token_expiry)
+    return LightRagTokenCredential(storage_access_token, storage_token_expiry)
 
 def display_splash_screen(args: argparse.Namespace) -> None:
     """

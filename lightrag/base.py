@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from abc import ABC, abstractmethod
 from enum import Enum
 import os
@@ -12,7 +11,7 @@ from typing import (
     TypeVar,
 )
 import numpy as np
-from lightrag.az_token_credential import LighRagTokenCredential
+from lightrag.az_token_credential import LightRagTokenCredential
 from .utils import EmbeddingFunc
 from .types import KnowledgeGraph
 
@@ -92,7 +91,7 @@ class StorageNameSpace(ABC):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential
+            access_token: LightRagTokenCredential
     ) -> None:
         """Initialize the storage"""
         pass
@@ -106,7 +105,7 @@ class StorageNameSpace(ABC):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential
+            access_token: LightRagTokenCredential
     ) -> None:
         """Commit the storage operations after indexing"""
 

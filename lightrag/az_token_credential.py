@@ -1,7 +1,7 @@
 from azure.core.credentials import TokenCredential, AccessToken
 from typing import Optional, Any
 
-class LighRagTokenCredential(TokenCredential):
+class LightRagTokenCredential(TokenCredential):
 
     def __init__(self, access_token: str, expires_on: int):
         self.access_token = access_token

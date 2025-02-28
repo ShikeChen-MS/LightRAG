@@ -3,7 +3,7 @@ from typing import Any, final
 from dataclasses import dataclass
 import numpy as np
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
-from lightrag.az_token_credential import LighRagTokenCredential
+from lightrag.az_token_credential import LightRagTokenCredential
 import time
 
 from lightrag.utils import (
@@ -41,7 +41,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential) -> None:
+            access_token: LightRagTokenCredential) -> None:
         try:
             blob_client = BlobServiceClient(
                 account_url=storage_account_url, credential=access_token
@@ -178,7 +178,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential
+            access_token: LightRagTokenCredential
     ) -> None:
         async with self._save_lock:
             json_data = self._client.save()

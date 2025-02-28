@@ -2,7 +2,7 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, Union, final
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
-from lightrag.az_token_credential import LighRagTokenCredential
+from lightrag.az_token_credential import LightRagTokenCredential
 from lightrag.base import (
     DocProcessingStatus,
     DocStatus,
@@ -26,7 +26,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential) -> None:
+            access_token: LightRagTokenCredential) -> None:
         try:
             blob_client = BlobServiceClient(
                 account_url=storage_account_url, credential=access_token
@@ -90,7 +90,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             self,
             storage_account_url: str,
             storage_container_name: str,
-            access_token: LighRagTokenCredential
+            access_token: LightRagTokenCredential
     ) -> None:
         blob_client = BlobServiceClient(
             account_url=storage_account_url, credential=access_token
