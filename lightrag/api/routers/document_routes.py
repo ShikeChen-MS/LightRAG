@@ -26,8 +26,13 @@ from fastapi import(
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from ... import LightRAG
-from ...base import DocProcessingStatus, DocStatus
-from ..utils_api import get_api_key_dependency, initialize_rag
+from ...base import DocProcessingStatus, DocStatus, StoragesStatus
+from ..utils_api import(
+    get_api_key_dependency,
+    initialize_rag,
+    wait_for_storage_initialization,
+    get_lightrag_token_credential
+)
 
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -409,7 +414,6 @@ async def run_scanning_process(rag: LightRAG, doc_manager: DocumentManager):
             try:
                 async with progress_lock:
                     scan_progress["current_file"] = os.path.basename(file_path)
-
                 await pipeline_index_file(rag, file_path)
 
                 async with progress_lock:
@@ -459,7 +463,10 @@ def create_document_routes(
             scan_progress["is_scanning"] = True
             scan_progress["indexed_count"] = 0
             scan_progress["progress"] = 0
-
+        await wait_for_storage_initialization(
+            rag,
+            get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+        )
         # Start the scanning process in the background
         background_tasks.add_task(run_scanning_process, rag, doc_manager)
         response = JSONResponse(
@@ -533,7 +540,10 @@ def create_document_routes(
             file_path = doc_manager.input_dir / file.filename
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
-
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             # Add to background tasks
             background_tasks.add_task(pipeline_index_file, rag, file_path)
             response = JSONResponse(content={
@@ -577,6 +587,10 @@ def create_document_routes(
         """
         try:
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             background_tasks.add_task(pipeline_index_texts, rag, [request.text])
             response = JSONResponse(content={
                 "status": "success",
@@ -621,6 +635,10 @@ def create_document_routes(
         """
         try:
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             background_tasks.add_task(pipeline_index_texts, rag, request.texts)
             response = JSONResponse(content={
                 "status": "success",
@@ -670,7 +688,10 @@ def create_document_routes(
                 )
 
             temp_path = await save_temp_file(doc_manager.input_dir, file)
-
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             # Add to background tasks
             background_tasks.add_task(pipeline_index_file, rag, temp_path)
 
@@ -731,6 +752,10 @@ def create_document_routes(
                     failed_files.append(f"{file.filename} (unsupported type)")
 
             if temp_files:
+                await wait_for_storage_initialization(
+                    rag,
+                    get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                )
                 background_tasks.add_task(pipeline_index_files, rag, temp_files)
 
             # Prepare status message
@@ -826,6 +851,10 @@ def create_document_routes(
                 DocStatus.FAILED,
             )
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             tasks = [rag.get_docs_by_status(status) for status in statuses]
             results: List[Dict[str, DocProcessingStatus]] = await asyncio.gather(*tasks)
 

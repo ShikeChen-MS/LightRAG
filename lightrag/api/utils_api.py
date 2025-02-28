@@ -1,7 +1,7 @@
 """
 Utility functions for the LightRAG API.
 """
-
+import asyncio
 import os
 import argparse
 from typing import Optional
@@ -12,7 +12,10 @@ from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
+
+from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
+from ..base import StoragesStatus
 
 # Load environment variables
 load_dotenv(override=True)
@@ -284,6 +287,15 @@ def parse_args() -> argparse.Namespace:
     ollama_server_infos.LIGHTRAG_MODEL = args.simulated_model_name
 
     return args
+
+async def wait_for_storage_initialization(rag: LightRAG, token: LightRagTokenCredential):
+    if rag.check_storage_status() == StoragesStatus.INITIALIZED.value:
+        return
+    if rag.check_storage_status() == StoragesStatus.CREATED.value:
+        await rag.initialize_storages(token)
+    while rag.check_storage_status() == StoragesStatus.INITIALIZING.value:
+        await asyncio.sleep(3)
+    raise HTTPException(status_code=500, detail="Storage initialization failed...")
 
 def initialize_rag(rag_instance_manager, base_request, x_affinity_token, storage_access_token):
     try:

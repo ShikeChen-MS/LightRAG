@@ -6,7 +6,12 @@ from typing import Optional
 from ..base_request import BaseRequest
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
-from ..utils_api import get_api_key_dependency, initialize_rag
+from ..utils_api import(
+    get_api_key_dependency,
+    initialize_rag,
+    wait_for_storage_initialization,
+    get_lightrag_token_credential
+)
 from ... import LightRAG
 
 router = APIRouter(tags=["graph"])
@@ -23,6 +28,10 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
     ):
         """Get all graph labels"""
         rag: LightRAG = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+        await wait_for_storage_initialization(
+            rag,
+            get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+        )
         res = await rag.get_graph_labels()
         return JSONResponse(content=json.dumps(res), headers={"X-Affinity-Token": rag.affinity_token})
 
@@ -37,6 +46,10 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
     ):
         """Get knowledge graph for a specific label"""
         rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+        await wait_for_storage_initialization(
+            rag,
+            get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+        )
         res = await rag.get_knowledge_graph(node_label=label, max_depth=max_depth)
         return JSONResponse(content=json.dumps(res), headers={"X-Affinity-Token": rag.affinity_token})
 

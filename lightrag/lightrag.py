@@ -447,6 +447,7 @@ class LightRAG:
     async def initialize_storages(self, storage_token: LightRagTokenCredential):
         """Asynchronously initialize the storages"""
         if self._storages_status == StoragesStatus.CREATED:
+            self._storages_status = StoragesStatus.INITIALIZING
             tasks = []
 
             for storage in (
@@ -461,7 +462,6 @@ class LightRAG:
             ):
                 if storage:
                     tasks.append(storage.initialize(self.storage_account_url, self.storage_container_name, storage_token))
-            self._storages_status = StoragesStatus.INITIALIZING
             await asyncio.gather(*tasks)
 
             self._storages_status = StoragesStatus.INITIALIZED

@@ -13,7 +13,12 @@ from fastapi import(
     Header,
 )
 from ...base import QueryParam
-from ..utils_api import get_api_key_dependency, initialize_rag
+from ..utils_api import(
+    get_api_key_dependency,
+    initialize_rag,
+    wait_for_storage_initialization,
+    get_lightrag_token_credential
+)
 from pydantic import BaseModel, Field, field_validator
 from ascii_colors import trace_exception
 from ... import LightRAG
@@ -173,6 +178,10 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
         try:
             param = request.to_query_params(False)
             rag: LightRAG = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             response = await rag.aquery(request.query, param=param)
 
             # If response is a string (e.g. cache hit), return directly
@@ -209,6 +218,10 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
         try:
             param = request.to_query_params(True)
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            )
             response = await rag.aquery(request.query, param=param)
 
             from fastapi.responses import StreamingResponse
