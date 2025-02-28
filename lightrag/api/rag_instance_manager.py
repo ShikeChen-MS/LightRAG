@@ -2,10 +2,10 @@ import asyncio
 import hashlib
 from typing import Dict
 from lightrag.az_token_credential import LightRagTokenCredential
-from lightrag import LightRAG
-from lightrag.llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
-from lightrag.types import GPTKeywordExtractionFormat
-from lightrag.utils import EmbeddingFunc, always_get_an_event_loop
+from ..lightrag import LightRAG
+from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
+from ..types import GPTKeywordExtractionFormat
+from ..utils import EmbeddingFunc, always_get_an_event_loop
 
 class RAGInstanceManager:
     instance = None

@@ -1,10 +1,9 @@
 """
 This module contains all query-related routes for the LightRAG API.
 """
-
 import json
 import logging
-from lightrag.api.base_request import BaseRequest
+from ..base_request import BaseRequest
 from typing import Any, Dict, List, Literal, Optional
 from fastapi.responses import JSONResponse
 from fastapi import(
@@ -13,12 +12,10 @@ from fastapi import(
     HTTPException,
     Header,
 )
-from lightrag.base import QueryParam
+from ...base import QueryParam
 from ..utils_api import get_api_key_dependency, initialize_rag
 from pydantic import BaseModel, Field, field_validator
-
 from ascii_colors import trace_exception
-
 from ... import LightRAG
 
 router = APIRouter(tags=["query"])

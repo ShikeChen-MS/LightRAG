@@ -9,8 +9,8 @@ import aiofiles
 import shutil
 import traceback
 import pipmaster as pm
-from lightrag.api.base_request import BaseRequest
-from lightrag.api.rag_instance_manager import RAGInstanceManager
+from ..base_request import BaseRequest
+from ..rag_instance_manager import RAGInstanceManager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -25,8 +25,8 @@ from fastapi import(
 )
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
-from lightrag import LightRAG
-from lightrag.base import DocProcessingStatus, DocStatus
+from ... import LightRAG
+from ...base import DocProcessingStatus, DocStatus
 from ..utils_api import get_api_key_dependency, initialize_rag
 
 

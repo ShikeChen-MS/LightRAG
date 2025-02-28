@@ -3,7 +3,7 @@ This module contains all graph-related routes for the LightRAG API.
 """
 import json
 from typing import Optional
-from lightrag.api.base_request import BaseRequest
+from ..base_request import BaseRequest
 from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
 from ..utils_api import get_api_key_dependency, initialize_rag

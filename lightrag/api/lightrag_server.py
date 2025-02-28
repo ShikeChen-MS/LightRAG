@@ -2,7 +2,6 @@
 LightRAG FastAPI Server
 """
 import json
-
 from fastapi import (
     FastAPI,
     Depends,
@@ -22,11 +21,10 @@ from dotenv import load_dotenv
 from .utils_api import (
     get_api_key_dependency,
     parse_args,
-    get_default_host,
     display_splash_screen,
 )
-from lightrag.api import __api_version__
-from lightrag.utils import logger
+from . import __api_version__
+from ..utils import logger
 from .routers.document_routes import (
     DocumentManager,
     create_document_routes,
@@ -101,26 +99,6 @@ def create_app(args, rag_instance_manager):
     from lightrag.utils import set_verbose_debug
 
     set_verbose_debug(args.verbose)
-
-    # Verify that bindings are correctly setup
-    if args.llm_binding not in [
-        "lollms",
-        "ollama",
-        "openai",
-        "openai-ollama",
-        "azure_openai",
-    ]:
-        raise Exception("llm binding not supported")
-
-    if args.embedding_binding not in ["lollms", "ollama", "openai", "azure_openai"]:
-        raise Exception("embedding binding not supported")
-
-    # Set default hosts if not provided
-    if args.llm_binding_host is None:
-        args.llm_binding_host = get_default_host(args.llm_binding)
-
-    if args.embedding_binding_host is None:
-        args.embedding_binding_host = get_default_host(args.embedding_binding)
 
     # Add SSL validation
     if args.ssl:

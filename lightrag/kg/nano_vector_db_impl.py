@@ -3,17 +3,16 @@ from typing import Any, final
 from dataclasses import dataclass
 import numpy as np
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
-from lightrag.az_token_credential import LightRagTokenCredential
+from ..az_token_credential import LightRagTokenCredential
 import time
-
-from lightrag.utils import (
+from ..utils import (
     logger,
     compute_mdhash_id,
 )
-from lightrag.base import (
+from ..base import (
     BaseVectorStorage,
 )
-from lightrag.kg.nanovectordbs import NanoVectorDB
+from ..kg.nanovectordbs import NanoVectorDB
 
 
 @final

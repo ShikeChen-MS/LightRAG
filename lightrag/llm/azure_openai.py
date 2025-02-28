@@ -1,12 +1,3 @@
-import os
-import pipmaster as pm  # Pipmaster for dynamic library install
-
-# install specific modules
-if not pm.is_installed("openai"):
-    pm.install("openai")
-if not pm.is_installed("tenacity"):
-    pm.install("tenacity")
-
 from openai import (
     AsyncAzureOpenAI,
     APIConnectionError,

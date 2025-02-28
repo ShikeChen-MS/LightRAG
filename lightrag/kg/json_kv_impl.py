@@ -2,11 +2,11 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, final
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
-from lightrag.az_token_credential import LightRagTokenCredential
-from lightrag.base import (
+from ..az_token_credential import LightRagTokenCredential
+from ..base import (
     BaseKVStorage,
 )
-from lightrag.utils import (
+from ..utils import (
     load_json,
     logger,
 )

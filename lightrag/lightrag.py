@@ -5,9 +5,9 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
-from lightrag.az_token_credential import LighRagTokenCredential
+from .az_token_credential import LightRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final
-from lightrag.kg import (
+from .kg import (
     STORAGE_ENV_REQUIREMENTS,
     STORAGES,
     verify_storage_implementation,
@@ -444,7 +444,7 @@ class LightRAG:
             loop.run_until_complete(async_func())
             loop.close()
 
-    async def initialize_storages(self, storage_token: LighRagTokenCredential):
+    async def initialize_storages(self, storage_token: LightRagTokenCredential):
         """Asynchronously initialize the storages"""
         if self._storages_status == StoragesStatus.CREATED:
             tasks = []

@@ -3,12 +3,12 @@ from dataclasses import dataclass
 from typing import Any, final
 import numpy as np
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
-from lightrag.az_token_credential import LightRagTokenCredential
-from lightrag.types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
-from lightrag.utils import (
+from ..az_token_credential import LightRagTokenCredential
+from ..types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
+from ..utils import (
     logger,
 )
-from lightrag.base import (
+from ..base import (
     BaseGraphStorage,
 )
 import networkx as nx

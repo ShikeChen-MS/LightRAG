@@ -4,6 +4,7 @@ future
 
 # Basic modules
 numpy
+openai
 pipmaster
 pydantic
 python-dotenv

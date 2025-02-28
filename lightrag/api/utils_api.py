@@ -7,12 +7,13 @@ import argparse
 from typing import Optional
 import sys
 from ascii_colors import ASCIIColors
-from lightrag.api import __api_version__
+from . import __api_version__
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
-from lightrag.az_token_credential import LightRagTokenCredential
+from ..az_token_credential import LightRagTokenCredential
+
 # Load environment variables
 load_dotenv(override=True)
 
