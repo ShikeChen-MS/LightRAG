@@ -1,8 +1,8 @@
 """
 This module contains all document-related routes for the LightRAG API.
 """
+
 import asyncio
-import json
 import logging
 import os
 import aiofiles
@@ -14,7 +14,7 @@ from ..rag_instance_manager import RAGInstanceManager
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from fastapi import(
+from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
@@ -27,11 +27,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from ... import LightRAG
 from ...base import DocProcessingStatus, DocStatus, StoragesStatus
-from ..utils_api import(
+from ..utils_api import (
     get_api_key_dependency,
     initialize_rag,
     wait_for_storage_initialization,
-    get_lightrag_token_credential
+    get_lightrag_token_credential,
 )
 
 
@@ -364,11 +364,11 @@ def create_document_routes(
 
     @router.post("/scan", dependencies=[Depends(optional_api_key)])
     async def scan_for_new_documents(
-            base_request: BaseRequest,
-            background_tasks: BackgroundTasks,
-            ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-            storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        base_request: BaseRequest,
+        background_tasks: BackgroundTasks,
+        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Trigger the scanning process for new documents.
@@ -380,7 +380,9 @@ def create_document_routes(
         Returns:
             dict: A dictionary containing the scanning status
         """
-        rag: LightRAG = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+        rag: LightRAG = initialize_rag(
+            rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
+        )
         async with progress_lock:
             if scan_progress["is_scanning"]:
                 return {"status": "already_scanning"}
@@ -390,21 +392,23 @@ def create_document_routes(
             scan_progress["progress"] = 0
         await wait_for_storage_initialization(
             rag,
-            get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+            get_lightrag_token_credential(
+                storage_access_token, base_request.storage_token_expiry
+            ),
         )
         # Start the scanning process in the background
         background_tasks.add_task(run_scanning_process, rag, rag.document_manager)
         response = JSONResponse(
             content={"status": "scanning_started"},
-            headers={"X-Affinity-Token": rag.affinity_token}
+            headers={"X-Affinity-Token": rag.affinity_token},
         )
         return response
 
     @router.get("/scan-progress")
     async def get_scan_progress(
-            ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-            storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Get the current progress of the document scanning process.
@@ -418,13 +422,14 @@ def create_document_routes(
                 - progress: Percentage of completion
         """
         if not ai_access_token or not storage_access_token:
-            raise HTTPException(status_code=401, detail="Missing Azure-AI-Access-Token header")
+            raise HTTPException(
+                status_code=401, detail="Missing Azure-AI-Access-Token header"
+            )
         async with progress_lock:
             if X_Affinity_Token is None:
                 return scan_progress
             response = JSONResponse(
-                content=json.dumps(scan_progress),
-                headers={"X-Affinity-Token": X_Affinity_Token}
+                content=scan_progress, headers={"X-Affinity-Token": X_Affinity_Token}
             )
             return response
 
@@ -435,7 +440,7 @@ def create_document_routes(
         file: UploadFile = File(...),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Upload a file to the input directory and index it.
@@ -455,7 +460,12 @@ def create_document_routes(
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
         try:
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             if not rag.document_manager.is_supported_file(file.filename):
                 raise HTTPException(
                     status_code=400,
@@ -467,15 +477,18 @@ def create_document_routes(
                 shutil.copyfileobj(file.file, buffer)
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             # Add to background tasks
             background_tasks.add_task(pipeline_index_file, rag, file_path)
-            response = JSONResponse(content={
-                "status": "success",
-                "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background."
+            response = JSONResponse(
+                content={
+                    "status": "success",
+                    "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background.",
                 },
-                headers={"X-Affinity-Token": rag.affinity_token}
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
             return response
         except Exception as e:
@@ -492,8 +505,8 @@ def create_document_routes(
         background_tasks: BackgroundTasks,
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
-    )->JSONResponse:
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+    ) -> JSONResponse:
         """
         Insert text into the RAG system.
 
@@ -511,17 +524,25 @@ def create_document_routes(
             HTTPException: If an error occurs during text processing (500).
         """
         try:
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             background_tasks.add_task(pipeline_index_texts, rag, [request.text])
-            response = JSONResponse(content={
-                "status": "success",
-                "message": "Text successfully received. Processing will continue in background."
+            response = JSONResponse(
+                content={
+                    "status": "success",
+                    "message": "Text successfully received. Processing will continue in background.",
                 },
-                headers={"X-Affinity-Token": rag.affinity_token}
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
             return response
         except Exception as e:
@@ -540,7 +561,7 @@ def create_document_routes(
         background_tasks: BackgroundTasks,
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Insert multiple texts into the RAG system.
@@ -559,17 +580,25 @@ def create_document_routes(
             HTTPException: If an error occurs during text processing (500).
         """
         try:
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             background_tasks.add_task(pipeline_index_texts, rag, request.texts)
-            response = JSONResponse(content={
-                "status": "success",
-                "message": "Text successfully received. Processing will continue in background."
+            response = JSONResponse(
+                content={
+                    "status": "success",
+                    "message": "Text successfully received. Processing will continue in background.",
                 },
-                headers={"X-Affinity-Token": rag.affinity_token}
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
             return response
         except Exception as e:
@@ -586,7 +615,7 @@ def create_document_routes(
         file: UploadFile = File(...),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Insert a file directly into the RAG system.
@@ -605,7 +634,12 @@ def create_document_routes(
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
         try:
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             if not rag.document_manager.is_supported_file(file.filename):
                 raise HTTPException(
                     status_code=400,
@@ -615,16 +649,19 @@ def create_document_routes(
             temp_path = await save_temp_file(rag.document_manager.input_dir, file)
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             # Add to background tasks
             background_tasks.add_task(pipeline_index_file, rag, temp_path)
 
-            response = JSONResponse(content={
-                "status": "success",
-                "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background."
+            response = JSONResponse(
+                content={
+                    "status": "success",
+                    "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background.",
                 },
-                headers={"X-Affinity-Token": rag.affinity_token}
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
             return response
         except Exception as e:
@@ -643,8 +680,8 @@ def create_document_routes(
         files: List[UploadFile] = File(...),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
-    )->JSONResponse:
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+    ) -> JSONResponse:
         """
         Process multiple files in batch mode.
 
@@ -667,11 +704,18 @@ def create_document_routes(
             inserted_count = 0
             failed_files = []
             temp_files = []
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             for file in files:
                 if rag.document_manager.is_supported_file(file.filename):
                     # Create a temporary file to save the uploaded content
-                    temp_files.append(await save_temp_file(rag.document_manager.input_dir, file))
+                    temp_files.append(
+                        await save_temp_file(rag.document_manager.input_dir, file)
+                    )
                     inserted_count += 1
                 else:
                     failed_files.append(f"{file.filename} (unsupported type)")
@@ -679,7 +723,9 @@ def create_document_routes(
             if temp_files:
                 await wait_for_storage_initialization(
                     rag,
-                    get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                    get_lightrag_token_credential(
+                        storage_access_token, base_request.storage_token_expiry
+                    ),
                 )
                 background_tasks.add_task(pipeline_index_files, rag, temp_files)
 
@@ -697,11 +743,9 @@ def create_document_routes(
                 status_message = "No documents were successfully inserted"
                 if failed_files:
                     status_message += f". Failed files: {', '.join(failed_files)}"
-            response = JSONResponse(content={
-                "status": status,
-                "message": status_message
-                },
-                headers={"X-Affinity-Token": rag.affinity_token}
+            response = JSONResponse(
+                content={"status": status, "message": status_message},
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
             return response
         except Exception as e:
@@ -716,7 +760,7 @@ def create_document_routes(
         base_request: BaseRequest,
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Clear all documents from the RAG system.
@@ -731,15 +775,21 @@ def create_document_routes(
             HTTPException: If an error occurs during the clearing process (500).
         """
         try:
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             rag.text_chunks = []
             rag.entities_vdb = None
             rag.relationships_vdb = None
-            response = JSONResponse(content={
-                "status": "success",
-                "message": "Text successfully received. Processing will continue in background."
+            response = JSONResponse(
+                content={
+                    "status": "success",
+                    "message": "Text successfully received. Processing will continue in background.",
                 },
-                headers={"X-Affinity-Token": rag.affinity_token}
+                headers={"X-Affinity-Token": rag.affinity_token},
             )
             return response
         except Exception as e:
@@ -752,7 +802,7 @@ def create_document_routes(
         base_request: BaseRequest,
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ) -> JSONResponse:
         """
         Get the status of all documents in the system.
@@ -775,10 +825,17 @@ def create_document_routes(
                 DocStatus.PROCESSED,
                 DocStatus.FAILED,
             )
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             tasks = [rag.get_docs_by_status(status) for status in statuses]
             results: List[Dict[str, DocProcessingStatus]] = await asyncio.gather(*tasks)
@@ -807,8 +864,8 @@ def create_document_routes(
                             metadata=doc_status.metadata,
                         )
                     )
-            res = JSONResponse(content= json.dumps(response),
-                headers={"X-Affinity-Token": rag.affinity_token}
+            res = JSONResponse(
+                content=response, headers={"X-Affinity-Token": rag.affinity_token}
             )
             return res
         except Exception as e:

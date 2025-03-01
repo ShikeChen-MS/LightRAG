@@ -37,28 +37,33 @@ class NanoVectorDBStorage(BaseVectorStorage):
         )
 
     async def initialize(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential) -> None:
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+    ) -> None:
         try:
             blob_client = BlobServiceClient(
                 account_url=storage_account_url, credential=access_token
             )
             container_client = blob_client.get_container_client(storage_container_name)
-            container_client.get_container_properties() # this is to check if the container exists and authentication is valid
+            container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
             # to prevent the file from being modified while trying to read
             # we acquire a lease to make sure no ops is performing on the file
             lease: BlobLeaseClient = container_client.acquire_lease()
             blob_list = container_client.list_blob_names()
-            blob_name = f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
+            blob_name = (
+                f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
+            )
             if not blob_name in blob_list:
                 logger.info(f"Creating new vdb_{self.namespace}.json")
                 self._client = NanoVectorDB(self.embedding_func.embedding_dim)
                 return
-            content = container_client.get_blob_client(blob_name).download_blob().readall()
+            content = (
+                container_client.get_blob_client(blob_name).download_blob().readall()
+            )
             lease.release()
-            content_str = content.decode('utf-8')
+            content_str = content.decode("utf-8")
             self._client = NanoVectorDB(
                 self.embedding_func.embedding_dim, storage_data=content_str
             )
@@ -174,10 +179,10 @@ class NanoVectorDBStorage(BaseVectorStorage):
             logger.error(f"Error deleting relations for {entity_name}: {e}")
 
     async def index_done_callback(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> None:
         async with self._save_lock:
             json_data = self._client.save()
@@ -190,7 +195,9 @@ class NanoVectorDBStorage(BaseVectorStorage):
         # to protect file integrity and ensure complete upload
         # acquire lease on the container to prevent any other ops
         lease: BlobLeaseClient = container_client.acquire_lease()
-        blob_name = f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
+        blob_name = (
+            f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
+        )
         blob_client = container_client.get_blob_client(blob_name)
         blob_client.upload_blob(json_data, lease=lease, overwrite=True)
         lease.release()

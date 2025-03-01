@@ -81,7 +81,7 @@ if __name__ == "__main__":
         "requirements.txt",
         "./lightrag/api/requirements.txt",
         "./lightrag/tools/lightrag_visualizer/requirements.txt",
-        "./devrequirements.txt"
+        "./devrequirements.txt",
     ]
 
     create_venv(venv_name)
@@ -90,10 +90,14 @@ if __name__ == "__main__":
         if check_file_existence(requirements_file):
             install_requirements(venv_name, requirements_file)
         else:
-            print(f"Requirements file '{requirements_file}' not found. Continue without it...")
+            print(
+                f"Requirements file '{requirements_file}' not found. Continue without it..."
+            )
             req_install = False
     if req_install:
         print("All requirements installed successfully.")
         sys.exit(0)
-    print("Virtual Environment created successfully, but not all requirements were installed...")
+    print(
+        "Virtual Environment created successfully, but not all requirements were installed..."
+    )
     sys.exit(1)

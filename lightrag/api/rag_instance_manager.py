@@ -8,6 +8,7 @@ from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embe
 from ..types import GPTKeywordExtractionFormat
 from ..utils import EmbeddingFunc, always_get_an_event_loop
 
+
 class RAGInstanceManager:
     instance = None
     _lock = asyncio.Lock()
@@ -32,12 +33,13 @@ class RAGInstanceManager:
             # here we take the args from argparser
             self.args = kwargs["args"]
 
-    async def get_rag_instance(self,
+    async def get_rag_instance(
+        self,
         storage_account_url: str,
         storage_container_name: str,
-        access_token: LightRagTokenCredential
+        access_token: LightRagTokenCredential,
     ) -> Any:
-        async with (self._lock):
+        async with self._lock:
             # calculating the hash of storage account url + container name
             # and take the hash(since SHA256 has fixed length of 64 characters as the id,
             # this also serves as affinity token;
@@ -52,13 +54,14 @@ class RAGInstanceManager:
             if rag_id in self.rag_instances:
                 return self.rag_instances[rag_id]
             else:
+
                 async def azure_openai_model_complete(
-                        prompt,
-                        access_token,
-                        system_prompt=None,
-                        history_messages=None,
-                        keyword_extraction=False,
-                        **kwargs,
+                    prompt,
+                    access_token,
+                    system_prompt=None,
+                    history_messages=None,
+                    keyword_extraction=False,
+                    **kwargs,
                 ) -> str:
                     keyword_extraction = kwargs.pop("keyword_extraction", None)
                     if keyword_extraction:
@@ -85,7 +88,7 @@ class RAGInstanceManager:
                         access_token,
                         self.args.embedding_binding_host,
                         self.args.embedding_api_version,
-                    )
+                    ),
                 )
                 self.rag_instances[rag_id] = LightRAG(
                     affinity_token=rag_id,
@@ -118,8 +121,9 @@ class RAGInstanceManager:
                     namespace_prefix=self.args.namespace_prefix,
                     auto_manage_storages_states=False,
                 )
-                self.rag_instances[rag_id].document_manager = \
-                    DocumentManager(f"{self.rag_instances[rag_id].working_dir}/input")
+                self.rag_instances[rag_id].document_manager = DocumentManager(
+                    f"{self.rag_instances[rag_id].working_dir}/input"
+                )
         # The storage initializing is expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.
@@ -133,17 +137,25 @@ class RAGInstanceManager:
     async def get_rag_instance_by_affinity_token(self, affinity_token: str) -> LightRAG:
         async with self._lock:
             if affinity_token not in self.rag_instances:
-                raise ValueError(f"Affinity token {affinity_token} not found in RAG instances.")
+                raise ValueError(
+                    f"Affinity token {affinity_token} not found in RAG instances."
+                )
         return self.rag_instances[affinity_token]
 
     def get_lightrag(self, *args, **kwargs) -> LightRAG:
         if self.instance is None:
-            raise ValueError("RAGInstanceManager is not initialized. No LightRAG instances available.")
+            raise ValueError(
+                "RAGInstanceManager is not initialized. No LightRAG instances available."
+            )
         loop = always_get_an_event_loop()
         return loop.run_until_complete(self.instance.get_rag_instance(*args, **kwargs))
 
     def get_lightrag_by_affinity_token(self, affinity_token: str) -> LightRAG:
         if self.instance is None:
-            raise ValueError("RAGInstanceManager is not initialized. No LightRAG instances available.")
+            raise ValueError(
+                "RAGInstanceManager is not initialized. No LightRAG instances available."
+            )
         loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.instance.get_rag_instance_by_affinity_token(affinity_token))
+        return loop.run_until_complete(
+            self.instance.get_rag_instance_by_affinity_token(affinity_token)
+        )

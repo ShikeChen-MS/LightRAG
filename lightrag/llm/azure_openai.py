@@ -86,7 +86,8 @@ async def azure_openai_complete(
     access_token,
     system_prompt=None,
     history_messages=[],
-    keyword_extraction=False, **kwargs
+    keyword_extraction=False,
+    **kwargs,
 ) -> str:
     keyword_extraction = kwargs.pop("keyword_extraction", None)
     result = await azure_openai_complete_if_cache(

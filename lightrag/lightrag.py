@@ -73,9 +73,7 @@ class LightRAG:
     # Directory
     # ---
 
-    working_dir: str = field(
-        default="./lightrag"
-    )
+    working_dir: str = field(default="./lightrag")
 
     document_manager: DocumentManager = field(default=None)
 
@@ -420,8 +418,8 @@ class LightRAG:
 
         self._storages_status = StoragesStatus.CREATED
 
-        #if self.auto_manage_storages_states:
-            #self._run_async_safely(self.initialize_storages, "Storage Initialization")
+        # if self.auto_manage_storages_states:
+        # self._run_async_safely(self.initialize_storages, "Storage Initialization")
 
     def __del__(self):
         if self.auto_manage_storages_states:
@@ -466,7 +464,13 @@ class LightRAG:
                 self.doc_status,
             ):
                 if storage:
-                    tasks.append(storage.initialize(self.storage_account_url, self.storage_container_name, storage_token))
+                    tasks.append(
+                        storage.initialize(
+                            self.storage_account_url,
+                            self.storage_container_name,
+                            storage_token,
+                        )
+                    )
             await asyncio.gather(*tasks)
 
             self._storages_status = StoragesStatus.INITIALIZED
@@ -1053,15 +1057,17 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace=make_namespace(
-                        self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
-                    ),
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace=make_namespace(
+                            self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
+                        ),
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
                 system_prompt=system_prompt,
             )
@@ -1072,15 +1078,17 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace=make_namespace(
-                        self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
-                    ),
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace=make_namespace(
+                            self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
+                        ),
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
                 system_prompt=system_prompt,
             )
@@ -1094,15 +1102,17 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace=make_namespace(
-                        self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
-                    ),
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace=make_namespace(
+                            self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
+                        ),
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
                 system_prompt=system_prompt,
             )
@@ -1168,15 +1178,17 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace=make_namespace(
-                        self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
-                    ),
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace=make_namespace(
+                            self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
+                        ),
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         elif param.mode == "naive":
@@ -1186,15 +1198,17 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace=make_namespace(
-                        self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
-                    ),
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace=make_namespace(
+                            self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
+                        ),
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         elif param.mode == "mix":
@@ -1207,15 +1221,17 @@ class LightRAG:
                 self.text_chunks,
                 param,
                 asdict(self),
-                hashing_kv=self.llm_response_cache
-                if self.llm_response_cache
-                and hasattr(self.llm_response_cache, "global_config")
-                else self.key_string_value_json_storage_cls(
-                    namespace=make_namespace(
-                        self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
-                    ),
-                    global_config=asdict(self),
-                    embedding_func=self.embedding_func,
+                hashing_kv=(
+                    self.llm_response_cache
+                    if self.llm_response_cache
+                    and hasattr(self.llm_response_cache, "global_config")
+                    else self.key_string_value_json_storage_cls(
+                        namespace=make_namespace(
+                            self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
+                        ),
+                        global_config=asdict(self),
+                        embedding_func=self.embedding_func,
+                    )
                 ),
             )
         else:

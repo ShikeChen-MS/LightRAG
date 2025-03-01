@@ -1,8 +1,6 @@
 aiohttp
 configparser
 future
-
-# Basic modules
 numpy
 openai
 pipmaster
@@ -12,12 +10,6 @@ azure-storage-blob
 httpx
 azure-core
 networkx
-
-
 setuptools
 tenacity
-
-# LLM packages
 tiktoken
-
-# Extra libraries are installed when needed using pipmaster

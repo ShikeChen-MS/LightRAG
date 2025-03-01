@@ -12,7 +12,9 @@ PROMPTS["DEFAULT_COMPLETION_DELIMITER"] = "<|COMPLETE|>"
 
 PROMPTS["DEFAULT_ENTITY_TYPES"] = ["organization", "person", "geo", "event", "category"]
 
-PROMPTS["entity_extraction"] = """---Goal---
+PROMPTS[
+    "entity_extraction"
+] = """---Goal---
 Given a text document that is potentially relevant to this activity and a list of entity types, identify all entities of those types from the text and all relationships among the identified entities.
 Use {language} as output language.
 
@@ -157,7 +159,9 @@ PROMPTS["fail_response"] = (
     "Sorry, I'm not able to provide an answer to that question.[no-context]"
 )
 
-PROMPTS["rag_response"] = """---Role---
+PROMPTS[
+    "rag_response"
+] = """---Role---
 
 You are a helpful assistant responding to user query about Knowledge Base provided below.
 
@@ -187,7 +191,9 @@ When handling relationships with timestamps:
 - If you don't know the answer, just say so.
 - Do not make anything up. Do not include information not provided by the Knowledge Base."""
 
-PROMPTS["keywords_extraction"] = """---Role---
+PROMPTS[
+    "keywords_extraction"
+] = """---Role---
 
 You are a helpful assistant tasked with identifying both high-level and low-level keywords in the user's query and conversation history.
 
@@ -255,7 +261,9 @@ Output:
 ]
 
 
-PROMPTS["naive_rag_response"] = """---Role---
+PROMPTS[
+    "naive_rag_response"
+] = """---Role---
 
 You are a helpful assistant responding to user query about Document Chunks provided below.
 
@@ -308,7 +316,9 @@ Similarity score criteria:
 Return only a number between 0-1, without any additional content.
 """
 
-PROMPTS["mix_rag_response"] = """---Role---
+PROMPTS[
+    "mix_rag_response"
+] = """---Role---
 
 You are a helpful assistant responding to user query about Data Sources provided below.
 

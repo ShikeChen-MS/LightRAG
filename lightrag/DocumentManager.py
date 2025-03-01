@@ -4,6 +4,7 @@ from typing import List
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from .az_token_credential import LightRagTokenCredential
 
+
 class DocumentManager:
     def __init__(
         self,
@@ -53,10 +54,10 @@ class DocumentManager:
         self.indexed_files = set()
 
     def scan_directory_for_new_files(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> List[Path]:
         """Scan input directory for new files"""
         new_files = []

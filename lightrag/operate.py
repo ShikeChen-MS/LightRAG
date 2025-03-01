@@ -707,9 +707,10 @@ async def extract_keywords_only(
     if cached_response is not None:
         try:
             keywords_data = json.loads(cached_response)
-            return keywords_data["high_level_keywords"], keywords_data[
-                "low_level_keywords"
-            ]
+            return (
+                keywords_data["high_level_keywords"],
+                keywords_data["low_level_keywords"],
+            )
         except (json.JSONDecodeError, KeyError):
             logger.warning(
                 "Invalid cache format for keywords, proceeding with extraction"
@@ -932,12 +933,16 @@ async def mix_kg_vector_query(
         system_prompt
         if system_prompt
         else PROMPTS["mix_rag_response"].format(
-            kg_context=kg_context
-            if kg_context
-            else "No relevant knowledge graph information found",
-            vector_context=vector_context
-            if vector_context
-            else "No relevant text information found",
+            kg_context=(
+                kg_context
+                if kg_context
+                else "No relevant knowledge graph information found"
+            ),
+            vector_context=(
+                vector_context
+                if vector_context
+                else "No relevant text information found"
+            ),
             response_type=query_param.response_type,
             history=history_context,
         )

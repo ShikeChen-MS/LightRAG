@@ -88,10 +88,10 @@ class StorageNameSpace(ABC):
     global_config: dict[str, Any]
 
     async def initialize(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> None:
         """Initialize the storage"""
         pass
@@ -102,10 +102,10 @@ class StorageNameSpace(ABC):
 
     @abstractmethod
     async def index_done_callback(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> None:
         """Commit the storage operations after indexing"""
 

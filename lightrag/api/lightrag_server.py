@@ -1,7 +1,7 @@
 """
 LightRAG FastAPI Server
 """
-import json
+
 from fastapi import (
     FastAPI,
     Depends,
@@ -16,6 +16,7 @@ from typing import Dict
 from pathlib import Path
 import configparser
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from .utils_api import (
@@ -126,10 +127,12 @@ def create_app(args, rag_instance_manager):
     # Initialize FastAPI
     app = FastAPI(
         title="LightRAG API",
-        description="API for querying text using LightRAG with separate storage and input directories"
-        + "(With authentication)"
-        if api_key
-        else "",
+        description=(
+            "API for querying text using LightRAG with separate storage and input directories"
+            + "(With authentication)"
+            if api_key
+            else ""
+        ),
         version=__api_version__,
         openapi_tags=[{"name": "api"}],
         lifespan=lifespan,
@@ -165,11 +168,15 @@ def create_app(args, rag_instance_manager):
     async def get_status():
         """Get current system status"""
         arguments = {}
-        arguments["status"] = "healthy"
+        result = {}
+        result["Status"] = "Healthy"
         for arg in vars(args):
-            arguments[arg]=getattr(args, arg)
+            if getattr(args, arg) is not None:
+                name = arg.replace("_", " ")
+                name = name.title()
+                result[name] = getattr(args, arg)
 
-        return arguments
+        return JSONResponse(content=result)
 
     # Webui mount webui/index.html
     static_dir = Path(__file__).parent / "webui"

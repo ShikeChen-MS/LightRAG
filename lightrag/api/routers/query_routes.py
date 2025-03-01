@@ -1,23 +1,24 @@
 """
 This module contains all query-related routes for the LightRAG API.
 """
+
 import json
 import logging
 from ..base_request import BaseRequest
 from typing import Any, Dict, List, Literal, Optional
 from fastapi.responses import JSONResponse
-from fastapi import(
+from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     Header,
 )
 from ...base import QueryParam
-from ..utils_api import(
+from ..utils_api import (
     get_api_key_dependency,
     initialize_rag,
     wait_for_storage_initialization,
-    get_lightrag_token_credential
+    get_lightrag_token_credential,
 )
 from pydantic import BaseModel, Field, field_validator
 from ascii_colors import trace_exception
@@ -148,7 +149,9 @@ class QueryResponse(BaseModel):
     )
 
 
-def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top_k: int = 60):
+def create_query_routes(
+    rag_instance_manager, api_key: Optional[str] = None, top_k: int = 60
+):
     optional_api_key = get_api_key_dependency(api_key)
 
     @router.post(
@@ -159,7 +162,7 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
         request: QueryRequest,
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
@@ -177,10 +180,17 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
         """
         try:
             param = request.to_query_params(False)
-            rag: LightRAG = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag: LightRAG = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             response = await rag.aquery(request.query, param=param)
 
@@ -190,20 +200,25 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
 
             if isinstance(response, dict):
                 result = json.dumps(response, indent=2)
-                return JSONResponse(content=result, headers={"X-Affinity-Token": rag.affinity_token})
+                return JSONResponse(
+                    content=result, headers={"X-Affinity-Token": rag.affinity_token}
+                )
             else:
-                return JSONResponse(content=str(response), headers={"X-Affinity-Token": rag.affinity_token})
+                return JSONResponse(
+                    content=str(response),
+                    headers={"X-Affinity-Token": rag.affinity_token},
+                )
         except Exception as e:
             trace_exception(e)
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
     async def query_text_stream(
-            base_request: BaseRequest,
-            request: QueryRequest,
-            ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-            storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-            X_Affinity_Token: str = Header(None, alias="X-Affinity-Token")
+        base_request: BaseRequest,
+        request: QueryRequest,
+        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
@@ -217,10 +232,17 @@ def create_query_routes(rag_instance_manager, api_key: Optional[str] = None, top
         """
         try:
             param = request.to_query_params(True)
-            rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
             response = await rag.aquery(request.query, param=param)
 

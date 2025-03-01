@@ -1,6 +1,7 @@
 """
 Utility functions for the LightRAG API.
 """
+
 import asyncio
 import os
 import argparse
@@ -12,26 +13,12 @@ from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
-
 from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
 from ..base import StoragesStatus
 
 # Load environment variables
 load_dotenv(override=True)
-
-
-class OllamaServerInfos:
-    # Constants for emulated Ollama model information
-    LIGHTRAG_NAME = "lightrag"
-    LIGHTRAG_TAG = os.getenv("OLLAMA_EMULATING_MODEL_TAG", "latest")
-    LIGHTRAG_MODEL = f"{LIGHTRAG_NAME}:{LIGHTRAG_TAG}"
-    LIGHTRAG_SIZE = 7365960935  # it's a dummy value
-    LIGHTRAG_CREATED_AT = "2024-01-15T00:00:00Z"
-    LIGHTRAG_DIGEST = "sha256:lightrag"
-
-
-ollama_server_infos = OllamaServerInfos()
 
 
 def get_api_key_dependency(api_key: Optional[str]):
@@ -235,13 +222,6 @@ def parse_args() -> argparse.Namespace:
         help="Prefix of the namespace",
     )
 
-    parser.add_argument(
-        "--auto-scan-at-startup",
-        action="store_true",
-        default=False,
-        help="Enable automatic scanning when the program starts",
-    )
-
     args = parser.parse_args()
 
     # Inject storage configuration from environment variables
@@ -258,10 +238,12 @@ def parse_args() -> argparse.Namespace:
         "LIGHTRAG_VECTOR_STORAGE", DefaultRAGStorageConfig.VECTOR_STORAGE
     )
 
-    args.llm_binding_host = get_env_value("AZURE_OPENAI_ENDPOINT",None)
+    args.llm_binding_host = get_env_value("AZURE_OPENAI_ENDPOINT", None)
     args.embedding_binding_host = get_env_value("AZURE_OPENAI_EMBEDDING_ENDPOINT", None)
     args.llm_api_version = get_env_value("AZURE_OPENAI_API_VERSION", None)
-    args.embedding_api_version = get_env_value("AZURE_OPENAI_EMBEDDING_API_VERSION", None)
+    args.embedding_api_version = get_env_value(
+        "AZURE_OPENAI_EMBEDDING_API_VERSION", None
+    )
     # Inject model configuration
     args.llm_model = get_env_value("AZURE_OPENAI_MODEL_NAME", None)
     args.embedding_model = get_env_value("AZURE_OPENAI_EMDEDDING_MODEL_NAME", None)
@@ -274,7 +256,10 @@ def parse_args() -> argparse.Namespace:
 
     return args
 
-async def wait_for_storage_initialization(rag: LightRAG, token: LightRagTokenCredential):
+
+async def wait_for_storage_initialization(
+    rag: LightRAG, token: LightRagTokenCredential
+):
     if rag.check_storage_status() == StoragesStatus.INITIALIZED.value:
         return
     if rag.check_storage_status() == StoragesStatus.CREATED.value:
@@ -283,7 +268,10 @@ async def wait_for_storage_initialization(rag: LightRAG, token: LightRagTokenCre
         await asyncio.sleep(3)
     raise HTTPException(status_code=500, detail="Storage initialization failed...")
 
-def initialize_rag(rag_instance_manager, base_request, x_affinity_token, storage_access_token):
+
+def initialize_rag(
+    rag_instance_manager, base_request, x_affinity_token, storage_access_token
+):
     try:
         if x_affinity_token:
             rag = rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
@@ -291,14 +279,18 @@ def initialize_rag(rag_instance_manager, base_request, x_affinity_token, storage
             rag = rag_instance_manager.get_lightrag(
                 storage_account_url=base_request.storage_account_url,
                 storage_container_name=base_request.storage_container_name,
-                access_token=get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry),
+                access_token=get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
             )
         return rag
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 def get_lightrag_token_credential(storage_access_token, storage_token_expiry):
     return LightRagTokenCredential(storage_access_token, storage_token_expiry)
+
 
 def display_splash_screen(args: argparse.Namespace) -> None:
     """
@@ -308,12 +300,14 @@ def display_splash_screen(args: argparse.Namespace) -> None:
         args: Parsed command line arguments
     """
     # Banner
-    ASCIIColors.cyan(f"""
+    ASCIIColors.cyan(
+        f"""
     ╔══════════════════════════════════════════════════════════════╗
     ║                   🚀 LightRAG Server v{__api_version__}                  ║
     ║          Fast, Lightweight RAG Server Implementation         ║
     ╚══════════════════════════════════════════════════════════════╝
-    """)
+    """
+    )
 
     # Server Configuration
     ASCIIColors.magenta("\n📡 Server Configuration:")
@@ -379,16 +373,6 @@ def display_splash_screen(args: argparse.Namespace) -> None:
     ASCIIColors.white("    └─ Document Status Storage: ", end="")
     ASCIIColors.yellow(f"{args.doc_status_storage}")
 
-    ASCIIColors.magenta("\n🛠️ System Configuration:")
-    ASCIIColors.white("    ├─ Ollama Emulating Model: ", end="")
-    ASCIIColors.yellow(f"{ollama_server_infos.LIGHTRAG_MODEL}")
-    ASCIIColors.white("    ├─ Log Level: ", end="")
-    ASCIIColors.yellow(f"{args.log_level}")
-    ASCIIColors.white("    ├─ Verbose Debug: ", end="")
-    ASCIIColors.yellow(f"{args.verbose}")
-    ASCIIColors.white("    └─ Timeout: ", end="")
-    ASCIIColors.yellow(f"{args.timeout if args.timeout else 'None (infinite)'}")
-
     # Server Status
     ASCIIColors.green("\n✨ Server starting up...\n")
 
@@ -408,13 +392,15 @@ def display_splash_screen(args: argparse.Namespace) -> None:
         ASCIIColors.yellow(f"{protocol}://localhost:{args.port}/webui")
 
         ASCIIColors.yellow("\n📝 Note:")
-        ASCIIColors.white("""    Since the server is running on 0.0.0.0:
+        ASCIIColors.white(
+            """    Since the server is running on 0.0.0.0:
     - Use 'localhost' or '127.0.0.1' for local access
     - Use your machine's IP address for remote access
     - To find your IP address:
       • Windows: Run 'ipconfig' in terminal
       • Linux/Mac: Run 'ifconfig' or 'ip addr' in terminal
-    """)
+    """
+        )
     else:
         base_url = f"{protocol}://{args.host}:{args.port}"
         ASCIIColors.magenta("\n🌐 Server Access Information:")
@@ -427,19 +413,24 @@ def display_splash_screen(args: argparse.Namespace) -> None:
 
     # Usage Examples
     ASCIIColors.magenta("\n📚 Quick Start Guide:")
-    ASCIIColors.cyan("""
+    ASCIIColors.cyan(
+        """
     1. Access the Swagger UI:
        Open your browser and navigate to the API documentation URL above
 
-    2. API Authentication:""")
+    2. API Authentication:"""
+    )
     if args.key:
-        ASCIIColors.cyan("""       Add the following header to your requests:
+        ASCIIColors.cyan(
+            """       Add the following header to your requests:
        X-API-Key: <your-api-key>
-    """)
+    """
+        )
     else:
         ASCIIColors.cyan("       No authentication required\n")
 
-    ASCIIColors.cyan("""    3. Basic Operations:
+    ASCIIColors.cyan(
+        """    3. Basic Operations:
        - POST /upload_document: Upload new documents to RAG
        - POST /query: Query your document collection
        - GET /collections: List available collections
@@ -447,14 +438,17 @@ def display_splash_screen(args: argparse.Namespace) -> None:
     4. Monitor the server:
        - Check server logs for detailed operation information
        - Use healthcheck endpoint: GET /health
-    """)
+    """
+    )
 
     # Security Notice
     if args.key:
         ASCIIColors.yellow("\n⚠️  Security Notice:")
-        ASCIIColors.white("""    API Key authentication is enabled.
+        ASCIIColors.white(
+            """    API Key authentication is enabled.
     Make sure to include the X-API-Key header in all your requests.
-    """)
+    """
+        )
 
     # Ensure splash output flush to system log
     sys.stdout.flush()
