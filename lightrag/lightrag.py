@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
 
-from .api.routers.document_routes import DocumentManager
+from . import DocumentManager
 from .az_token_credential import LightRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final
 from .kg import (

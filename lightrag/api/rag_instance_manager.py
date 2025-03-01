@@ -1,8 +1,8 @@
 import asyncio
 import hashlib
-from typing import Dict
+from typing import Dict, Any
 from lightrag.az_token_credential import LightRagTokenCredential
-from .routers.document_routes import DocumentManager
+from .. import DocumentManager
 from ..lightrag import LightRAG
 from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
 from ..types import GPTKeywordExtractionFormat
@@ -27,7 +27,7 @@ class RAGInstanceManager:
         # but also the class variables will remain unchanged
         if not hasattr(self, "_initialized"):
             self._initialized = True
-            self.rag_instances: Dict[str, LightRAG] = {}
+            self.rag_instances: Dict[str, Any] = {}
             # use kwargs to accept named arguments
             # here we take the args from argparser
             self.args = kwargs["args"]
@@ -36,7 +36,7 @@ class RAGInstanceManager:
         storage_account_url: str,
         storage_container_name: str,
         access_token: LightRagTokenCredential
-    ) -> LightRAG:
+    ) -> Any:
         async with (self._lock):
             # calculating the hash of storage account url + container name
             # and take the hash(since SHA256 has fixed length of 64 characters as the id,

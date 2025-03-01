@@ -242,14 +242,6 @@ def parse_args() -> argparse.Namespace:
         help="Enable automatic scanning when the program starts",
     )
 
-    parser.add_argument(
-        "--embedding-binding",
-        type=str,
-        default=get_env_value("EMBEDDING_BINDING", "ollama"),
-        choices=["lollms", "ollama", "openai", "azure_openai"],
-        help="Embedding binding type (default: from env or ollama)",
-    )
-
     args = parser.parse_args()
 
     # Inject storage configuration from environment variables
@@ -341,17 +333,8 @@ def display_splash_screen(args: argparse.Namespace) -> None:
         ASCIIColors.white("    └─ SSL Key: ", end="")
         ASCIIColors.yellow(f"{args.ssl_keyfile}")
 
-    # Directory Configuration
-    ASCIIColors.magenta("\n📂 Directory Configuration:")
-    ASCIIColors.white("    ├─ Working Directory: ", end="")
-    ASCIIColors.yellow(f"{args.working_dir}")
-    ASCIIColors.white("    └─ Input Directory: ", end="")
-    ASCIIColors.yellow(f"{args.input_dir}")
-
     # LLM Configuration
     ASCIIColors.magenta("\n🤖 LLM Configuration:")
-    ASCIIColors.white("    ├─ Binding: ", end="")
-    ASCIIColors.yellow(f"{args.llm_binding}")
     ASCIIColors.white("    ├─ Host: ", end="")
     ASCIIColors.yellow(f"{args.llm_binding_host}")
     ASCIIColors.white("    └─ Model: ", end="")
@@ -359,8 +342,6 @@ def display_splash_screen(args: argparse.Namespace) -> None:
 
     # Embedding Configuration
     ASCIIColors.magenta("\n📊 Embedding Configuration:")
-    ASCIIColors.white("    ├─ Binding: ", end="")
-    ASCIIColors.yellow(f"{args.embedding_binding}")
     ASCIIColors.white("    ├─ Host: ", end="")
     ASCIIColors.yellow(f"{args.embedding_binding_host}")
     ASCIIColors.white("    ├─ Model: ", end="")

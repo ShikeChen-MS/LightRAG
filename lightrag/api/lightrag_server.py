@@ -25,10 +25,7 @@ from .utils_api import (
 )
 from . import __api_version__
 from ..utils import logger
-from .routers.document_routes import (
-    DocumentManager,
-    create_document_routes,
-)
+from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
 
@@ -167,12 +164,12 @@ def create_app(args, rag_instance_manager):
     @app.get("/health", dependencies=[Depends(optional_api_key)])
     async def get_status():
         """Get current system status"""
-        return {
-            "status": "healthy",
-            "configuration": {
-                json.dumps(args)
-            },
-        }
+        arguments = {}
+        arguments["status"] = "healthy"
+        for arg in vars(args):
+            arguments[arg]=getattr(args, arg)
+
+        return arguments
 
     # Webui mount webui/index.html
     static_dir = Path(__file__).parent / "webui"
