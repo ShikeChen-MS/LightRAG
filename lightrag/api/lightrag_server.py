@@ -119,9 +119,6 @@ def create_app(args, rag_instance_manager):
     # Check if API key is provided either through env var or args
     api_key = os.getenv("LIGHTRAG_API_KEY") or args.key
 
-    # Initialize document manager
-    doc_manager = DocumentManager(args.input_dir)
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         """Lifespan context manager for startup and shutdown events"""
@@ -163,7 +160,7 @@ def create_app(args, rag_instance_manager):
     optional_api_key = get_api_key_dependency(api_key)
 
     # Add routes
-    app.include_router(create_document_routes(rag_instance_manager, doc_manager, api_key))
+    app.include_router(create_document_routes(rag_instance_manager, api_key))
     app.include_router(create_query_routes(rag_instance_manager, api_key, args.top_k))
     app.include_router(create_graph_routes(rag_instance_manager, api_key))
 

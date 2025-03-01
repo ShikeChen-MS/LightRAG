@@ -5,6 +5,8 @@ import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
+
+from .api.routers.document_routes import DocumentManager
 from .az_token_credential import LightRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final
 from .kg import (
@@ -74,6 +76,9 @@ class LightRAG:
     working_dir: str = field(
         default="./lightrag"
     )
+
+    document_manager: DocumentManager = field(default=None)
+
     """Directory where cache and temporary files are stored."""
 
     # Storage

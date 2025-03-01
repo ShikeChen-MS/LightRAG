@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 from typing import Dict
 from lightrag.az_token_credential import LightRagTokenCredential
+from .routers.document_routes import DocumentManager
 from ..lightrag import LightRAG
 from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
 from ..types import GPTKeywordExtractionFormat
@@ -36,7 +37,7 @@ class RAGInstanceManager:
         storage_container_name: str,
         access_token: LightRagTokenCredential
     ) -> LightRAG:
-        async with self._lock:
+        async with (self._lock):
             # calculating the hash of storage account url + container name
             # and take the hash(since SHA256 has fixed length of 64 characters as the id,
             # this also serves as affinity token;
@@ -117,6 +118,8 @@ class RAGInstanceManager:
                     namespace_prefix=self.args.namespace_prefix,
                     auto_manage_storages_states=False,
                 )
+                self.rag_instances[rag_id].document_manager = \
+                    DocumentManager(f"{self.rag_instances[rag_id].working_dir}/input")
         # The storage initializing is expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.

@@ -23,9 +23,11 @@ from fastapi import(
     UploadFile,
     Header,
 )
+from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from ... import LightRAG
+from ...az_token_credential import LightRagTokenCredential
 from ...base import DocProcessingStatus, DocStatus, StoragesStatus
 from ..utils_api import(
     get_api_key_dependency,
@@ -164,21 +166,31 @@ class DocumentManager:
             ".less",  # LESS CSS
         ),
     ):
-        self.input_dir = Path(input_dir)
+        self.input_dir = input_dir
         self.supported_extensions = supported_extensions
         self.indexed_files = set()
 
-        # Create input directory if it doesn't exist
-        self.input_dir.mkdir(parents=True, exist_ok=True)
-
-    def scan_directory_for_new_files(self) -> List[Path]:
+    def scan_directory_for_new_files(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential
+    ) -> List[Path]:
         """Scan input directory for new files"""
         new_files = []
-        for ext in self.supported_extensions:
-            logging.debug(f"Scanning for {ext} files in {self.input_dir}")
-            for file_path in self.input_dir.rglob(f"*{ext}"):
-                if file_path not in self.indexed_files:
-                    new_files.append(file_path)
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
+        )
+        container_client = blob_client.get_container_client(storage_container_name)
+        container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+        lease: BlobLeaseClient = container_client.acquire_lease()
+        blob_list = container_client.list_blob_names()
+        for blob_name in blob_list:
+            if self.is_supported_file(blob_name) in self.supported_extensions:
+                route = f"{self.input_dir}/{blob_name}"
+                if route not in self.indexed_files:
+                    new_files.append(route)
+        lease.release()
         return new_files
 
     # def scan_directory(self) -> List[Path]:
@@ -433,7 +445,7 @@ async def run_scanning_process(rag: LightRAG, doc_manager: DocumentManager):
 
 
 def create_document_routes(
-    rag_instance_manager: RAGInstanceManager, doc_manager: DocumentManager, api_key: Optional[str] = None
+    rag_instance_manager: RAGInstanceManager, api_key: Optional[str] = None
 ):
     optional_api_key = get_api_key_dependency(api_key)
 
@@ -468,7 +480,7 @@ def create_document_routes(
             get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
         )
         # Start the scanning process in the background
-        background_tasks.add_task(run_scanning_process, rag, doc_manager)
+        background_tasks.add_task(run_scanning_process, rag, rag.document_manager)
         response = JSONResponse(
             content={"status": "scanning_started"},
             headers={"X-Affinity-Token": rag.affinity_token}
@@ -531,13 +543,13 @@ def create_document_routes(
         """
         try:
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
-            if not doc_manager.is_supported_file(file.filename):
+            if not rag.document_manager.is_supported_file(file.filename):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Unsupported file type. Supported types: {doc_manager.supported_extensions}",
+                    detail=f"Unsupported file type. Supported types: {rag.document_manager.supported_extensions}",
                 )
 
-            file_path = doc_manager.input_dir / file.filename
+            file_path = rag.document_manager.input_dir / file.filename
             with open(file_path, "wb") as buffer:
                 shutil.copyfileobj(file.file, buffer)
             await wait_for_storage_initialization(
@@ -681,13 +693,13 @@ def create_document_routes(
         """
         try:
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
-            if not doc_manager.is_supported_file(file.filename):
+            if not rag.document_manager.is_supported_file(file.filename):
                 raise HTTPException(
                     status_code=400,
-                    detail=f"Unsupported file type. Supported types: {doc_manager.supported_extensions}",
+                    detail=f"Unsupported file type. Supported types: {rag.document_manager.supported_extensions}",
                 )
 
-            temp_path = await save_temp_file(doc_manager.input_dir, file)
+            temp_path = await save_temp_file(rag.document_manager.input_dir, file)
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(storage_access_token, base_request.storage_token_expiry)
@@ -744,9 +756,9 @@ def create_document_routes(
             temp_files = []
             rag = initialize_rag(rag_instance_manager, base_request, X_Affinity_Token, storage_access_token)
             for file in files:
-                if doc_manager.is_supported_file(file.filename):
+                if rag.document_manager.is_supported_file(file.filename):
                     # Create a temporary file to save the uploaded content
-                    temp_files.append(await save_temp_file(doc_manager.input_dir, file))
+                    temp_files.append(await save_temp_file(rag.document_manager.input_dir, file))
                     inserted_count += 1
                 else:
                     failed_files.append(f"{file.filename} (unsupported type)")

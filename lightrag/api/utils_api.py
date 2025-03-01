@@ -252,10 +252,6 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
 
-    # convert relative path to absolute path
-    args.working_dir = os.path.abspath(args.working_dir)
-    args.input_dir = os.path.abspath(args.input_dir)
-
     # Inject storage configuration from environment variables
     args.kv_storage = get_env_value(
         "LIGHTRAG_KV_STORAGE", DefaultRAGStorageConfig.KV_STORAGE
@@ -283,8 +279,6 @@ def parse_args() -> argparse.Namespace:
     # Inject chunk configuration
     args.chunk_size = get_env_value("CHUNK_SIZE", 1200, int)
     args.chunk_overlap_size = get_env_value("CHUNK_OVERLAP_SIZE", 100, int)
-
-    ollama_server_infos.LIGHTRAG_MODEL = args.simulated_model_name
 
     return args
 
