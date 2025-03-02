@@ -291,11 +291,13 @@ def initialize_rag(
 def get_lightrag_token_credential(storage_access_token, storage_token_expiry):
     return LightRagTokenCredential(storage_access_token, storage_token_expiry)
 
+
 def extract_token_value(authorization: str, header_name: str) -> str:
     """Extract token value from authorization header"""
     if not authorization:
         raise HTTPException(
-            status_code=401, detail=f"Bearer Token in the Header named as \"{header_name}\" is required"
+            status_code=401,
+            detail=f'Bearer Token in the Header named as "{header_name}" is required',
         )
     token_parts = authorization.split()
     if len(token_parts) != 2 or token_parts[0].lower() != "bearer":
@@ -303,6 +305,7 @@ def extract_token_value(authorization: str, header_name: str) -> str:
             status_code=401, detail=f"Invalid header {header_name} format"
         )
     return token_parts[1]
+
 
 def display_splash_screen(args: argparse.Namespace) -> None:
     """

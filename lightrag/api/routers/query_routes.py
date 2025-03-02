@@ -182,10 +182,12 @@ def create_query_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             param = request.to_query_params(False)
             rag: LightRAG = initialize_rag(
@@ -241,10 +243,12 @@ def create_query_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             param = request.to_query_params(True)
             rag = initialize_rag(

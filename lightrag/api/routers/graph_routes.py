@@ -12,7 +12,7 @@ from ..utils_api import (
     initialize_rag,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
-    extract_token_value
+    extract_token_value,
 )
 from ... import LightRAG
 
@@ -32,9 +32,11 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
         if not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Storage_Access_Token"',
             )
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         rag: LightRAG = initialize_rag(
             rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
         )
@@ -61,9 +63,11 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
         if not not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Storage_Access_Token"',
             )
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         rag = initialize_rag(
             rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
         )

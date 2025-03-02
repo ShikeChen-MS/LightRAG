@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 
+
 class BaseRequest(BaseModel):
 
     storage_account_url: str = Field(

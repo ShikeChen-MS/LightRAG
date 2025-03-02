@@ -25,7 +25,10 @@ from dotenv import load_dotenv
 from .utils_api import (
     get_api_key_dependency,
     parse_args,
-    display_splash_screen, initialize_rag, wait_for_storage_initialization, get_lightrag_token_credential,
+    display_splash_screen,
+    initialize_rag,
+    wait_for_storage_initialization,
+    get_lightrag_token_credential,
 )
 from . import __api_version__, base_request
 from ..utils import logger

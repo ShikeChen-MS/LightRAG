@@ -33,9 +33,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             )
         self.cosine_better_than_threshold = cosine_threshold
         self._max_batch_size = self.global_config["embedding_batch_num"]
-        self._client = NanoVectorDB(
-            self.embedding_func.embedding_dim
-        )
+        self._client = NanoVectorDB(self.embedding_func.embedding_dim)
 
     async def initialize(
         self,

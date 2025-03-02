@@ -54,10 +54,10 @@ class DocumentManager:
         self.indexed_files = set()
 
     def get_new_files_count(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> int:
         """Scan input directory for number of new files"""
         new_files = []
@@ -82,7 +82,7 @@ class DocumentManager:
         storage_account_url: str,
         storage_container_name: str,
         access_token: LightRagTokenCredential,
-    ) -> str|None:
+    ) -> str | None:
         """Scan input directory for new files and return the first one found"""
         new_files = []
         blob_client = BlobServiceClient(

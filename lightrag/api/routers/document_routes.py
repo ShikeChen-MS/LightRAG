@@ -9,11 +9,7 @@ import os
 import traceback
 import pipmaster as pm
 from ..base_request import BaseRequest
-from azure.storage.blob import(
-    BlobServiceClient,
-    BlobLeaseClient,
-    ContainerClient
-)
+from azure.storage.blob import BlobServiceClient, BlobLeaseClient, ContainerClient
 from ..rag_instance_manager import RAGInstanceManager
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -36,7 +32,7 @@ from ..utils_api import (
     initialize_rag,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
-    extract_token_value
+    extract_token_value,
 )
 
 
@@ -124,6 +120,7 @@ class DocStatusResponse(BaseModel):
 class DocsStatusesResponse(BaseModel):
     statuses: Dict[DocStatus, List[DocStatusResponse]] = {}
 
+
 def get_file_stream_from_storage(file_name: str, container_client: ContainerClient):
     lease: BlobLeaseClient = container_client.acquire_lease()
     stream = io.BytesIO()
@@ -132,12 +129,13 @@ def get_file_stream_from_storage(file_name: str, container_client: ContainerClie
     lease.release()
     return stream
 
+
 async def pipeline_enqueue_file(
-        rag: LightRAG,
-        file_path: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+    rag: LightRAG,
+    file_path: str,
+    storage_account_url: str,
+    storage_container_name: str,
+    access_token: LightRagTokenCredential,
 ) -> bool:
     """Add a file to the queue for processing
 
@@ -162,7 +160,10 @@ async def pipeline_enqueue_file(
         blob_list = container_client.list_blob_names()
         if file_name not in blob_list:
             logging.error(f"File {file_name} not found in storage")
-            raise HTTPException(status_code=404, detail=f"File {file_name} not found in storage {storage_container_name}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"File {file_name} not found in storage {storage_container_name}",
+            )
         lease.release()
 
         # Process based on file type
@@ -204,7 +205,7 @@ async def pipeline_enqueue_file(
             ):
                 lease: BlobLeaseClient = container_client.acquire_lease()
                 file_byte = container_client.download_blob(file_name).readall()
-                content = file_byte.decode('utf-8')
+                content = file_byte.decode("utf-8")
                 lease.release()
 
             case ".pdf":
@@ -256,9 +257,7 @@ async def pipeline_enqueue_file(
                         )
                     content += "\n"
             case _:
-                logging.error(
-                    f"Unsupported file type: {file_path} (extension {ext})"
-                )
+                logging.error(f"Unsupported file type: {file_path} (extension {ext})")
                 return False
 
         # Insert into the RAG queue
@@ -276,11 +275,11 @@ async def pipeline_enqueue_file(
 
 
 async def pipeline_index_file(
-        rag: LightRAG,
-        file_path: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+    rag: LightRAG,
+    file_path: str,
+    storage_account_url: str,
+    storage_container_name: str,
+    access_token: LightRagTokenCredential,
 ):
     """Index a file
 
@@ -290,11 +289,7 @@ async def pipeline_index_file(
     """
     try:
         if await pipeline_enqueue_file(
-                rag,
-                file_path,
-                storage_account_url,
-                storage_container_name,
-                access_token
+            rag, file_path, storage_account_url, storage_container_name, access_token
         ):
             await rag.apipeline_process_enqueue_documents()
 
@@ -317,12 +312,12 @@ async def pipeline_index_texts(rag: LightRAG, texts: List[str]):
 
 
 async def upload_file(
-        input_dir: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-        rag: LightRAG,
-        file: UploadFile = File(...)
+    input_dir: str,
+    storage_account_url: str,
+    storage_container_name: str,
+    access_token: LightRagTokenCredential,
+    rag: LightRAG,
+    file: UploadFile = File(...),
 ) -> str:
     """Save the uploaded file to a temporary location
 
@@ -342,7 +337,10 @@ async def upload_file(
     blob_list = container_client.list_blob_names()
     if file_name in blob_list:
         logging.error(f"File {file_name} already exists in storage")
-        raise HTTPException(status_code=400, detail=f"File {file_name} already exists in storage {storage_container_name}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"File {file_name} already exists in storage {storage_container_name}",
+        )
     else:
         blob_name = file.filename
         blob_client = container_client.get_blob_client(blob_name)
@@ -353,10 +351,10 @@ async def upload_file(
 
 
 async def run_scanning_process(
-        rag: LightRAG,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+    rag: LightRAG,
+    storage_account_url: str,
+    storage_container_name: str,
+    access_token: LightRagTokenCredential,
 ):
     """Background task to scan and index documents"""
     try:
@@ -377,7 +375,7 @@ async def run_scanning_process(
                     file_path,
                     storage_account_url,
                     storage_container_name,
-                    access_token
+                    access_token,
                 )
 
                 async with progress_lock:
@@ -422,10 +420,12 @@ def create_document_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         rag: LightRAG = initialize_rag(
             rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
         )
@@ -450,7 +450,7 @@ def create_document_routes(
             base_request.storage_container_name,
             get_lightrag_token_credential(
                 storage_access_token, base_request.storage_token_expiry
-            )
+            ),
         )
         response = JSONResponse(
             content={"status": "scanning_started"},
@@ -480,7 +480,9 @@ def create_document_routes(
                 status_code=401, detail="Missing Azure-AI-Access-Token header"
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         async with progress_lock:
             if X_Affinity_Token is None:
                 return scan_progress
@@ -519,10 +521,12 @@ def create_document_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -582,10 +586,12 @@ def create_document_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -643,10 +649,12 @@ def create_document_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -673,7 +681,8 @@ def create_document_routes(
                     storage_access_token, base_request.storage_token_expiry
                 ),
                 rag,
-                file)
+                file,
+            )
 
             # Add to background tasks
             background_tasks.add_task(
@@ -684,7 +693,7 @@ def create_document_routes(
                 base_request.storage_container_name,
                 get_lightrag_token_credential(
                     storage_access_token, base_request.storage_token_expiry
-                )
+                ),
             )
             response = JSONResponse(
                 content={
@@ -723,10 +732,12 @@ def create_document_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -774,10 +785,12 @@ def create_document_routes(
         if not ai_access_token or not storage_access_token:
             raise HTTPException(
                 status_code=401,
-                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
         try:
             statuses = (
                 DocStatus.PENDING,

@@ -54,6 +54,7 @@ class RAGInstanceManager:
             if rag_id in self.rag_instances:
                 return self.rag_instances[rag_id]
             else:
+
                 async def azure_openai_model_complete(
                     prompt,
                     access_token,
