@@ -19,6 +19,7 @@ from ..utils_api import (
     initialize_rag,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
+    extract_token_value,
 )
 from pydantic import BaseModel, Field, field_validator
 from ascii_colors import trace_exception
@@ -178,6 +179,13 @@ def create_query_routes(
             HTTPException: Raised when an error occurs during the request handling process,
                        with status code 500 and detail containing the exception message.
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             param = request.to_query_params(False)
             rag: LightRAG = initialize_rag(
@@ -230,6 +238,13 @@ def create_query_routes(
         Returns:
             StreamingResponse: A streaming response containing the RAG query results.
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             param = request.to_query_params(True)
             rag = initialize_rag(

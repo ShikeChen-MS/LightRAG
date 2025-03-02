@@ -18,7 +18,7 @@ def check_python_version():
         sys.exit(1)
 
 
-def create_venv(venv_name: str, skip_pip=False):
+def create_venv(venv_name: str):
     """
     Creating a virtual environment with the given name and Python version.
     :param venv_name: desired name of the virtual environment
@@ -30,7 +30,7 @@ def create_venv(venv_name: str, skip_pip=False):
     else:
         upgrade_command = f"{venv_name}/bin/python -m pip install --upgrade pip"
     try:
-        venv.create(venv_name, with_pip=(not skip_pip))
+        venv.create(venv_name, with_pip=True)
         print("Upgrading pip to the latest version...")
         subprocess.run(upgrade_command, check=True, shell=True)
         print(f"Virtual environment '{venv_name}' created successfully.")

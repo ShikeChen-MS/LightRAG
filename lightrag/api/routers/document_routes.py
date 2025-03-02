@@ -6,7 +6,6 @@ import asyncio
 import io
 import logging
 import os
-import shutil
 import traceback
 import pipmaster as pm
 from ..base_request import BaseRequest
@@ -37,6 +36,7 @@ from ..utils_api import (
     initialize_rag,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
+    extract_token_value
 )
 
 
@@ -419,6 +419,13 @@ def create_document_routes(
         Returns:
             dict: A dictionary containing the scanning status
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         rag: LightRAG = initialize_rag(
             rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
         )
@@ -472,6 +479,8 @@ def create_document_routes(
             raise HTTPException(
                 status_code=401, detail="Missing Azure-AI-Access-Token header"
             )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         async with progress_lock:
             if X_Affinity_Token is None:
                 return scan_progress
@@ -507,6 +516,13 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs during text processing (500).
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -563,6 +579,13 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs during text processing (500).
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -617,6 +640,13 @@ def create_document_routes(
         Raises:
             HTTPException: If the file type is not supported (400) or other errors occur (500).
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -690,6 +720,13 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs during the clearing process (500).
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -734,6 +771,13 @@ def create_document_routes(
         Raises:
             HTTPException: If an error occurs while retrieving document statuses (500).
         """
+        if not ai_access_token or not storage_access_token:
+            raise HTTPException(
+                status_code=401,
+                detail="Missing necessary authentication header: \"Azure-AI-Access-Token\" or \"Storage_Access_Token\""
+            )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+        storage_access_token = extract_token_value(storage_access_token, "Storage_Access_Token")
         try:
             statuses = (
                 DocStatus.PENDING,
