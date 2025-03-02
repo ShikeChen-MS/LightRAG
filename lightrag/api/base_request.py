@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-
+from typing import Optional
 
 class BaseRequest(BaseModel):
 
@@ -13,12 +13,12 @@ class BaseRequest(BaseModel):
         description="Container name for the storage.",
     )
 
-    ai_token_expiry: int = Field(
+    ai_token_expiry: Optional[int] = Field(
         default=0,
         description="Expiry time for Azure AI token in Unix time.",
     )
 
-    storage_token_expiry: int = Field(
+    storage_token_expiry: Optional[int] = Field(
         default=0,
         description="Expiry time for Azure storage token in Unix time.",
     )

@@ -1,4 +1,5 @@
 import asyncio
+from abc import ABC
 from typing import Any, final
 from dataclasses import dataclass
 import numpy as np
@@ -17,7 +18,7 @@ from ..kg.nanovectordbs import NanoVectorDB
 
 @final
 @dataclass
-class NanoVectorDBStorage(BaseVectorStorage):
+class NanoVectorDBStorage(BaseVectorStorage, ABC):
     def __init__(self):
         self._client = None
         self._save_lock = asyncio.Lock()
@@ -33,7 +34,7 @@ class NanoVectorDBStorage(BaseVectorStorage):
         self.cosine_better_than_threshold = cosine_threshold
         self._max_batch_size = self.global_config["embedding_batch_num"]
         self._client = NanoVectorDB(
-            self.embedding_func.embedding_dim, storage_file=self._client_file_name
+            self.embedding_func.embedding_dim
         )
 
     async def initialize(
@@ -70,6 +71,10 @@ class NanoVectorDBStorage(BaseVectorStorage):
         except Exception as e:
             logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
             raise
+
+    @property
+    def client(self):
+        return self._client
 
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         logger.info(f"Inserting {len(data)} to {self.namespace}")

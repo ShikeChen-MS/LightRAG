@@ -3,15 +3,19 @@ This module contains all document-related routes for the LightRAG API.
 """
 
 import asyncio
+import io
 import logging
 import os
-import aiofiles
 import shutil
 import traceback
 import pipmaster as pm
 from ..base_request import BaseRequest
+from azure.storage.blob import(
+    BlobServiceClient,
+    BlobLeaseClient,
+    ContainerClient
+)
 from ..rag_instance_manager import RAGInstanceManager
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from fastapi import (
@@ -26,6 +30,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, field_validator
 from ... import LightRAG
+from ...az_token_credential import LightRagTokenCredential
 from ...base import DocProcessingStatus, DocStatus, StoragesStatus
 from ..utils_api import (
     get_api_key_dependency,
@@ -119,8 +124,21 @@ class DocStatusResponse(BaseModel):
 class DocsStatusesResponse(BaseModel):
     statuses: Dict[DocStatus, List[DocStatusResponse]] = {}
 
+def get_file_stream_from_storage(file_name: str, container_client: ContainerClient):
+    lease: BlobLeaseClient = container_client.acquire_lease()
+    stream = io.BytesIO()
+    container_client.download_blob(file_name).readinto(stream)
+    stream.seek(0, os.SEEK_SET)
+    lease.release()
+    return stream
 
-async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
+async def pipeline_enqueue_file(
+        rag: LightRAG,
+        file_path: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+) -> bool:
     """Add a file to the queue for processing
 
     Args:
@@ -132,11 +150,20 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
 
     try:
         content = ""
-        ext = file_path.suffix.lower()
+        ext = rag.document_manager.is_supported_file(file_path)
 
-        file = None
-        async with aiofiles.open(file_path, "rb") as f:
-            file = await f.read()
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
+        )
+        container_client = blob_client.get_container_client(storage_container_name)
+        container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+        file_name = f"{rag.document_manager.input_dir}/{file_path}"
+        lease: BlobLeaseClient = container_client.acquire_lease()
+        blob_list = container_client.list_blob_names()
+        if file_name not in blob_list:
+            logging.error(f"File {file_name} not found in storage")
+            raise HTTPException(status_code=404, detail=f"File {file_name} not found in storage {storage_container_name}")
+        lease.release()
 
         # Process based on file type
         match ext:
@@ -175,24 +202,27 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
                 | ".scss"
                 | ".less"
             ):
-                content = file.decode("utf-8")
+                lease: BlobLeaseClient = container_client.acquire_lease()
+                file_byte = container_client.download_blob(file_name).readall()
+                content = file_byte.decode('utf-8')
+                lease.release()
+
             case ".pdf":
                 if not pm.is_installed("pypdf2"):
                     pm.install("pypdf2")
                 from PyPDF2 import PdfReader  # type: ignore
-                from io import BytesIO
 
-                pdf_file = BytesIO(file)
+                pdf_file = get_file_stream_from_storage(file_name, container_client)
                 reader = PdfReader(pdf_file)
                 for page in reader.pages:
                     content += page.extract_text() + "\n"
             case ".docx":
-                if not pm.is_installed("docx"):
-                    pm.install("docx")
+                if not pm.is_installed("python-docx"):
+                    pm.install("python-docx")
                 from docx import Document
                 from io import BytesIO
 
-                docx_file = BytesIO(file)
+                docx_file = get_file_stream_from_storage(file_name, container_client)
                 doc = Document(docx_file)
                 content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
             case ".pptx":
@@ -201,7 +231,7 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
                 from pptx import Presentation
                 from io import BytesIO
 
-                pptx_file = BytesIO(file)
+                pptx_file = get_file_stream_from_storage(file_name, container_client)
                 prs = Presentation(pptx_file)
                 for slide in prs.slides:
                     for shape in slide.shapes:
@@ -213,7 +243,7 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
                 from openpyxl import load_workbook
                 from io import BytesIO
 
-                xlsx_file = BytesIO(file)
+                xlsx_file = get_file_stream_from_storage(file_name, container_client)
                 wb = load_workbook(xlsx_file)
                 for sheet in wb:
                     content += f"Sheet: {sheet.title}\n"
@@ -227,31 +257,31 @@ async def pipeline_enqueue_file(rag: LightRAG, file_path: Path) -> bool:
                     content += "\n"
             case _:
                 logging.error(
-                    f"Unsupported file type: {file_path.name} (extension {ext})"
+                    f"Unsupported file type: {file_path} (extension {ext})"
                 )
                 return False
 
         # Insert into the RAG queue
         if content:
             await rag.apipeline_enqueue_documents(content)
-            logging.info(f"Successfully fetched and enqueued file: {file_path.name}")
+            logging.info(f"Successfully fetched and enqueued file: {file_path}")
             return True
         else:
-            logging.error(f"No content could be extracted from file: {file_path.name}")
+            logging.error(f"No content could be extracted from file: {file_path}")
 
     except Exception as e:
-        logging.error(f"Error processing or enqueueing file {file_path.name}: {str(e)}")
+        logging.error(f"Error processing or enqueueing file {file_path}: {str(e)}")
         logging.error(traceback.format_exc())
-    finally:
-        if file_path.name.startswith(temp_prefix):
-            try:
-                file_path.unlink()
-            except Exception as e:
-                logging.error(f"Error deleting file {file_path}: {str(e)}")
     return False
 
 
-async def pipeline_index_file(rag: LightRAG, file_path: Path):
+async def pipeline_index_file(
+        rag: LightRAG,
+        file_path: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+):
     """Index a file
 
     Args:
@@ -259,36 +289,17 @@ async def pipeline_index_file(rag: LightRAG, file_path: Path):
         file_path: Path to the saved file
     """
     try:
-        if await pipeline_enqueue_file(rag, file_path):
+        if await pipeline_enqueue_file(
+                rag,
+                file_path,
+                storage_account_url,
+                storage_container_name,
+                access_token
+        ):
             await rag.apipeline_process_enqueue_documents()
 
     except Exception as e:
-        logging.error(f"Error indexing file {file_path.name}: {str(e)}")
-        logging.error(traceback.format_exc())
-
-
-async def pipeline_index_files(rag: LightRAG, file_paths: List[Path]):
-    """Index multiple files concurrently
-
-    Args:
-        rag: LightRAG instance
-        file_paths: Paths to the files to index
-    """
-    if not file_paths:
-        return
-    try:
-        enqueued = False
-
-        if len(file_paths) == 1:
-            enqueued = await pipeline_enqueue_file(rag, file_paths[0])
-        else:
-            tasks = [pipeline_enqueue_file(rag, path) for path in file_paths]
-            enqueued = any(await asyncio.gather(*tasks))
-
-        if enqueued:
-            await rag.apipeline_process_enqueue_documents()
-    except Exception as e:
-        logging.error(f"Error indexing files: {str(e)}")
+        logging.error(f"Error indexing file {file_path}: {str(e)}")
         logging.error(traceback.format_exc())
 
 
@@ -305,7 +316,14 @@ async def pipeline_index_texts(rag: LightRAG, texts: List[str]):
     await rag.apipeline_process_enqueue_documents()
 
 
-async def save_temp_file(input_dir: Path, file: UploadFile = File(...)) -> Path:
+async def upload_file(
+        input_dir: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        rag: LightRAG,
+        file: UploadFile = File(...)
+) -> str:
     """Save the uploaded file to a temporary location
 
     Args:
@@ -314,32 +332,53 @@ async def save_temp_file(input_dir: Path, file: UploadFile = File(...)) -> Path:
     Returns:
         Path: The path to the saved file
     """
-    # Generate unique filename to avoid conflicts
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    unique_filename = f"{temp_prefix}{timestamp}_{file.filename}"
+    blob_client = BlobServiceClient(
+        account_url=storage_account_url, credential=access_token
+    )
+    container_client = blob_client.get_container_client(storage_container_name)
+    container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+    file_name = f"{rag.document_manager.input_dir}/{file.filename}"
+    lease: BlobLeaseClient = container_client.acquire_lease()
+    blob_list = container_client.list_blob_names()
+    if file_name in blob_list:
+        logging.error(f"File {file_name} already exists in storage")
+        raise HTTPException(status_code=400, detail=f"File {file_name} already exists in storage {storage_container_name}")
+    else:
+        blob_name = file.filename
+        blob_client = container_client.get_blob_client(blob_name)
+        file_bytes = await file.read()
+        blob_client.upload_blob(file_bytes, overwrite=False)
+    lease.release()
+    return file.filename
 
-    # Create a temporary file to save the uploaded content
-    temp_path = input_dir / "temp" / unique_filename
-    temp_path.parent.mkdir(exist_ok=True)
 
-    # Save the file
-    with open(temp_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-    return temp_path
-
-
-async def run_scanning_process(rag: LightRAG):
+async def run_scanning_process(
+        rag: LightRAG,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+):
     """Background task to scan and index documents"""
     try:
-        new_files = rag.document_manager.scan_directory_for_new_files()
+        new_files = rag.document_manager.scan_directory_for_new_file(
+            storage_account_url, storage_container_name, access_token
+        )
+        if new_files is None:
+            return
         scan_progress["total_files"] = len(new_files)
 
         logging.info(f"Found {len(new_files)} new files to index.")
         for file_path in new_files:
             try:
                 async with progress_lock:
-                    scan_progress["current_file"] = os.path.basename(file_path)
-                await pipeline_index_file(rag, file_path)
+                    scan_progress["current_file"] = new_files
+                await pipeline_index_file(
+                    rag,
+                    file_path,
+                    storage_account_url,
+                    storage_container_name,
+                    access_token
+                )
 
                 async with progress_lock:
                     scan_progress["indexed_count"] += 1
@@ -397,7 +436,15 @@ def create_document_routes(
             ),
         )
         # Start the scanning process in the background
-        background_tasks.add_task(run_scanning_process, rag, rag.document_manager)
+        background_tasks.add_task(
+            run_scanning_process,
+            rag,
+            base_request.storage_account_url,
+            base_request.storage_container_name,
+            get_lightrag_token_credential(
+                storage_access_token, base_request.storage_token_expiry
+            )
+        )
         response = JSONResponse(
             content={"status": "scanning_started"},
             headers={"X-Affinity-Token": rag.affinity_token},
@@ -432,69 +479,6 @@ def create_document_routes(
                 content=scan_progress, headers={"X-Affinity-Token": X_Affinity_Token}
             )
             return response
-
-    @router.post("/upload", dependencies=[Depends(optional_api_key)])
-    async def upload_to_input_dir(
-        base_request: BaseRequest,
-        background_tasks: BackgroundTasks,
-        file: UploadFile = File(...),
-        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
-    ):
-        """
-        Upload a file to the input directory and index it.
-
-        This API endpoint accepts a file through an HTTP POST request, checks if the
-        uploaded file is of a supported type, saves it in the specified input directory,
-        indexes it for retrieval, and returns a success status with relevant details.
-
-        Args:
-            background_tasks: FastAPI BackgroundTasks for async processing
-            file (UploadFile): The file to be uploaded. It must have an allowed extension.
-
-        Returns:
-            InsertResponse: A response object containing the upload status and a message.
-
-        Raises:
-            HTTPException: If the file type is not supported (400) or other errors occur (500).
-        """
-        try:
-            rag = initialize_rag(
-                rag_instance_manager,
-                base_request,
-                X_Affinity_Token,
-                storage_access_token,
-            )
-            if not rag.document_manager.is_supported_file(file.filename):
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file type. Supported types: {rag.document_manager.supported_extensions}",
-                )
-
-            file_path = rag.document_manager.input_dir / file.filename
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
-                ),
-            )
-            # Add to background tasks
-            background_tasks.add_task(pipeline_index_file, rag, file_path)
-            response = JSONResponse(
-                content={
-                    "status": "success",
-                    "message": f"File '{file.filename}' uploaded successfully. Processing will continue in background.",
-                },
-                headers={"X-Affinity-Token": rag.affinity_token},
-            )
-            return response
-        except Exception as e:
-            logging.error(f"Error /documents/upload: {file.filename}: {str(e)}")
-            logging.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
 
     @router.post(
         "/text", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
@@ -645,17 +629,33 @@ def create_document_routes(
                     status_code=400,
                     detail=f"Unsupported file type. Supported types: {rag.document_manager.supported_extensions}",
                 )
-
-            temp_path = await save_temp_file(rag.document_manager.input_dir, file)
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
                     storage_access_token, base_request.storage_token_expiry
                 ),
             )
-            # Add to background tasks
-            background_tasks.add_task(pipeline_index_file, rag, temp_path)
+            temp_path = await upload_file(
+                rag.document_manager.input_dir,
+                base_request.storage_account_url,
+                base_request.storage_container_name,
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
+                rag,
+                file)
 
+            # Add to background tasks
+            background_tasks.add_task(
+                pipeline_index_file,
+                rag,
+                temp_path,
+                base_request.storage_account_url,
+                base_request.storage_container_name,
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                )
+            )
             response = JSONResponse(
                 content={
                     "status": "success",
@@ -666,90 +666,6 @@ def create_document_routes(
             return response
         except Exception as e:
             logging.error(f"Error /documents/file: {str(e)}")
-            logging.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.post(
-        "/file_batch",
-        response_model=InsertResponse,
-        dependencies=[Depends(optional_api_key)],
-    )
-    async def insert_batch(
-        base_request: BaseRequest,
-        background_tasks: BackgroundTasks,
-        files: List[UploadFile] = File(...),
-        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
-    ) -> JSONResponse:
-        """
-        Process multiple files in batch mode.
-
-        This endpoint allows uploading and processing multiple files simultaneously.
-        It handles partial successes and provides detailed feedback about failed files.
-
-        Args:
-            background_tasks: FastAPI BackgroundTasks for async processing
-            files (List[UploadFile]): List of files to process
-
-        Returns:
-            InsertResponse: A response object containing:
-                - status: "success", "partial_success", or "failure"
-                - message: Detailed information about the operation results
-
-        Raises:
-            HTTPException: If an error occurs during processing (500).
-        """
-        try:
-            inserted_count = 0
-            failed_files = []
-            temp_files = []
-            rag = initialize_rag(
-                rag_instance_manager,
-                base_request,
-                X_Affinity_Token,
-                storage_access_token,
-            )
-            for file in files:
-                if rag.document_manager.is_supported_file(file.filename):
-                    # Create a temporary file to save the uploaded content
-                    temp_files.append(
-                        await save_temp_file(rag.document_manager.input_dir, file)
-                    )
-                    inserted_count += 1
-                else:
-                    failed_files.append(f"{file.filename} (unsupported type)")
-
-            if temp_files:
-                await wait_for_storage_initialization(
-                    rag,
-                    get_lightrag_token_credential(
-                        storage_access_token, base_request.storage_token_expiry
-                    ),
-                )
-                background_tasks.add_task(pipeline_index_files, rag, temp_files)
-
-            # Prepare status message
-            if inserted_count == len(files):
-                status = "success"
-                status_message = f"Successfully inserted all {inserted_count} documents"
-            elif inserted_count > 0:
-                status = "partial_success"
-                status_message = f"Successfully inserted {inserted_count} out of {len(files)} documents"
-                if failed_files:
-                    status_message += f". Failed files: {', '.join(failed_files)}"
-            else:
-                status = "failure"
-                status_message = "No documents were successfully inserted"
-                if failed_files:
-                    status_message += f". Failed files: {', '.join(failed_files)}"
-            response = JSONResponse(
-                content={"status": status, "message": status_message},
-                headers={"X-Affinity-Token": rag.affinity_token},
-            )
-            return response
-        except Exception as e:
-            logging.error(f"Error /documents/batch: {str(e)}")
             logging.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
 

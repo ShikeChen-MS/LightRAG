@@ -116,6 +116,12 @@ class BaseVectorStorage(StorageNameSpace, ABC):
     cosine_better_than_threshold: float = field(default=0.2)
     meta_fields: set[str] = field(default_factory=set)
 
+    @property
+    @abstractmethod
+    def client(self):
+        """Property to ensure subclasses have a _client attribute"""
+        pass
+
     @abstractmethod
     async def query(self, query: str, top_k: int) -> list[dict[str, Any]]:
         """Query the vector storage and retrieve top_k results."""

@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
 
-from . import DocumentManager
+from .document_manager import DocumentManager
 from .az_token_credential import LightRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final
 from .kg import (
@@ -1528,7 +1528,7 @@ class LightRAG:
         # Optional: Get vector database information
         if include_vector_data:
             entity_id = compute_mdhash_id(entity_name, prefix="ent-")
-            vector_data = self.entities_vdb._client.get([entity_id])
+            vector_data = self.entities_vdb.client.get([entity_id])
             result["vector_data"] = vector_data[0] if vector_data else None
 
         return result

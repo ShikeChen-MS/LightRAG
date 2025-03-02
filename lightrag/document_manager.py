@@ -53,13 +53,13 @@ class DocumentManager:
         self.supported_extensions = supported_extensions
         self.indexed_files = set()
 
-    def scan_directory_for_new_files(
-        self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-    ) -> List[Path]:
-        """Scan input directory for new files"""
+    def get_new_files_count(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential,
+    ) -> int:
+        """Scan input directory for number of new files"""
         new_files = []
         blob_client = BlobServiceClient(
             account_url=storage_account_url, credential=access_token
@@ -68,20 +68,39 @@ class DocumentManager:
         container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
         lease: BlobLeaseClient = container_client.acquire_lease()
         blob_list = container_client.list_blob_names()
+        res = 0
         for blob_name in blob_list:
             if self.is_supported_file(blob_name) in self.supported_extensions:
                 route = f"{self.input_dir}/{blob_name}"
                 if route not in self.indexed_files:
-                    new_files.append(route)
+                    res += 1
         lease.release()
-        return new_files
+        return res
 
-    # def scan_directory(self) -> List[Path]:
-    #     new_files = []
-    #     for ext in self.supported_extensions:
-    #         for file_path in self.input_dir.rglob(f"*{ext}"):
-    #             new_files.append(file_path)
-    #     return new_files
+    def scan_directory_for_new_file(
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+    ) -> str|None:
+        """Scan input directory for new files and return the first one found"""
+        new_files = []
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
+        )
+        container_client = blob_client.get_container_client(storage_container_name)
+        container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+        lease: BlobLeaseClient = container_client.acquire_lease()
+        blob_list = container_client.list_blob_names()
+        res = None
+        for blob_name in blob_list:
+            if self.is_supported_file(blob_name) in self.supported_extensions:
+                route = f"{self.input_dir}/{blob_name}"
+                if route not in self.indexed_files:
+                    lease.release()
+                    return route
+        lease.release()
+        return None
 
     def mark_as_indexed(self, file_path: Path):
         self.indexed_files.add(file_path)

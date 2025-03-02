@@ -5,8 +5,11 @@ LightRAG FastAPI Server
 from fastapi import (
     FastAPI,
     Depends,
+    Header,
 )
 from fastapi.responses import FileResponse
+
+from lightrag.api.base_request import BaseRequest
 from lightrag.api.rag_instance_manager import RAGInstanceManager
 import threading
 import os
@@ -22,9 +25,9 @@ from dotenv import load_dotenv
 from .utils_api import (
     get_api_key_dependency,
     parse_args,
-    display_splash_screen,
+    display_splash_screen, initialize_rag, wait_for_storage_initialization, get_lightrag_token_credential,
 )
-from . import __api_version__
+from . import __api_version__, base_request
 from ..utils import logger
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
@@ -164,10 +167,14 @@ def create_app(args, rag_instance_manager):
     app.include_router(create_query_routes(rag_instance_manager, api_key, args.top_k))
     app.include_router(create_graph_routes(rag_instance_manager, api_key))
 
-    @app.get("/health", dependencies=[Depends(optional_api_key)])
-    async def get_status():
+    @app.post("/health", dependencies=[Depends(optional_api_key)])
+    async def get_status(
+        base_request: BaseRequest,
+        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+    ):
         """Get current system status"""
-        arguments = {}
         result = {}
         result["Status"] = "Healthy"
         for arg in vars(args):
@@ -175,6 +182,22 @@ def create_app(args, rag_instance_manager):
                 name = arg.replace("_", " ")
                 name = name.title()
                 result[name] = getattr(args, arg)
+        try:
+            rag = initialize_rag(
+                rag_instance_manager,
+                base_request,
+                X_Affinity_Token,
+                storage_access_token,
+            )
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(
+                    storage_access_token, base_request.storage_token_expiry
+                ),
+            )
+        except Exception as e:
+            result["Status"] = "Unhealthy"
+            result["Error"] = str(e)
 
         return JSONResponse(content=result)
 

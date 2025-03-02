@@ -1,12 +1,17 @@
 from azure.core.credentials import TokenCredential, AccessToken
 from typing import Optional, Any
+from datetime import datetime, timezone, timedelta
 
 
 class LightRagTokenCredential(TokenCredential):
 
     def __init__(self, access_token: str, expires_on: int):
         self.access_token = access_token
-        self.expire = expires_on
+        if expires_on is None:
+            expire_time = datetime.now(timezone.utc) + timedelta(hours=1)
+            self.expires_on = int(expire_time.timestamp())
+        else:
+            self.expire = expires_on
 
     def get_token(
         self,

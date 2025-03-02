@@ -1,8 +1,5 @@
 aiofiles
 ascii_colors
-docx
-python-pptx
-openpyxl
 fastapi
 graspologic
 numpy

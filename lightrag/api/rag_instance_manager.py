@@ -2,7 +2,7 @@ import asyncio
 import hashlib
 from typing import Dict, Any
 from lightrag.az_token_credential import LightRagTokenCredential
-from .. import DocumentManager
+from ..document_manager import DocumentManager
 from ..lightrag import LightRAG
 from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
 from ..types import GPTKeywordExtractionFormat
@@ -54,7 +54,6 @@ class RAGInstanceManager:
             if rag_id in self.rag_instances:
                 return self.rag_instances[rag_id]
             else:
-
                 async def azure_openai_model_complete(
                     prompt,
                     access_token,
@@ -121,9 +120,10 @@ class RAGInstanceManager:
                     namespace_prefix=self.args.namespace_prefix,
                     auto_manage_storages_states=False,
                 )
-                self.rag_instances[rag_id].document_manager = DocumentManager(
+                doc_manager = DocumentManager(
                     f"{self.rag_instances[rag_id].working_dir}/input"
                 )
+                self.rag_instances[rag_id].document_manager = doc_manager
         # The storage initializing is expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.
