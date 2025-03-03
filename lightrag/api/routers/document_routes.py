@@ -429,13 +429,13 @@ def create_document_routes(
         rag: LightRAG = initialize_rag(
             rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
         )
-        async with progress_lock:
-            if scan_progress["is_scanning"]:
+        async with rag.progress_lock:
+            if rag.scan_progress["is_scanning"]:
                 return {"status": "already_scanning"}
 
-            scan_progress["is_scanning"] = True
-            scan_progress["indexed_count"] = 0
-            scan_progress["progress"] = 0
+            rag.scan_progress["is_scanning"] = True
+            rag.scan_progress["indexed_count"] = 0
+            rag.scan_progress["progress"] = 0
         await wait_for_storage_initialization(
             rag,
             get_lightrag_token_credential(
@@ -460,6 +460,7 @@ def create_document_routes(
 
     @router.get("/scan-progress")
     async def get_scan_progress(
+        base_request: BaseRequest,
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -483,11 +484,15 @@ def create_document_routes(
         storage_access_token = extract_token_value(
             storage_access_token, "Storage_Access_Token"
         )
-        async with progress_lock:
+        rag: LightRAG = initialize_rag(
+            rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
+        )
+        async with rag.progress_lock:
             if X_Affinity_Token is None:
-                return scan_progress
+                return rag.scan_progress
             response = JSONResponse(
-                content=scan_progress, headers={"X-Affinity-Token": X_Affinity_Token}
+                content=rag.scan_progress,
+                headers={"X-Affinity-Token": X_Affinity_Token},
             )
             return response
 

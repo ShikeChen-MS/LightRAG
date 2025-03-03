@@ -7,16 +7,10 @@ from fastapi import (
     Depends,
     Header,
 )
-from fastapi.responses import FileResponse
-
 from lightrag.api.base_request import BaseRequest
 from lightrag.api.rag_instance_manager import RAGInstanceManager
-import threading
 import os
-from fastapi.staticfiles import StaticFiles
 import logging
-from typing import Dict
-from pathlib import Path
 import configparser
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -45,21 +39,6 @@ except Exception as e:
 # Initialize config parser
 config = configparser.ConfigParser()
 config.read("config.ini")
-
-# Global configuration
-global_top_k = 60  # default value
-
-# Global progress tracker
-scan_progress: Dict = {
-    "is_scanning": False,
-    "current_file": "",
-    "indexed_count": 0,
-    "total_files": 0,
-    "progress": 0,
-}
-
-# Lock for thread-safe operations
-progress_lock = threading.Lock()
 
 
 class AccessLogFilter(logging.Filter):
@@ -203,19 +182,6 @@ def create_app(args, rag_instance_manager):
             result["Error"] = str(e)
 
         return JSONResponse(content=result)
-
-    # Webui mount webui/index.html
-    static_dir = Path(__file__).parent / "webui"
-    static_dir.mkdir(exist_ok=True)
-    app.mount(
-        "/webui",
-        StaticFiles(directory=static_dir, html=True, check_dir=True),
-        name="webui",
-    )
-
-    @app.get("/webui/")
-    async def webui_root():
-        return FileResponse(static_dir / "index.html")
 
     return app
 

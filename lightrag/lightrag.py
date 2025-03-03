@@ -2,13 +2,14 @@ from __future__ import annotations
 import asyncio
 import configparser
 import os
+import threading
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
 
 from .document_manager import DocumentManager
 from .az_token_credential import LightRagTokenCredential
-from typing import Any, AsyncIterator, Callable, Iterator, cast, final
+from typing import Any, AsyncIterator, Callable, Iterator, cast, final, Dict
 from .kg import (
     STORAGE_ENV_REQUIREMENTS,
     STORAGES,
@@ -59,120 +60,72 @@ config.read("config.ini", "utf-8")
 
 
 @final
-@dataclass
 class LightRAG:
     """LightRAG: Simple and Fast Retrieval-Augmented Generation."""
 
-    # each instance of LightRAG will be dedicated to specific storage
-    # which in turn target to specific set of users, therefore, affinity token
-    # stays same for all these users given this instance can handle all these requests
-    # without further initializing more LightRAG instances
-    affinity_token: str = field(default=None)
-    """Affinity token for stickiness"""
-
-    # Directory
-    # ---
-
-    working_dir: str = field(default="./lightrag")
-
-    document_manager: DocumentManager = field(default=None)
-
-    """Directory where cache and temporary files are stored."""
-
-    # Storage
-    # ---
-
-    storage_account_url: str = field(default=None)
-    """Storage account url for Azure Blob Storage."""
-
-    storage_container_name: str = field(default=None)
-    """Storage container name for Azure Blob Storage."""
-
-    kv_storage: str = field(default="JsonKVStorage")
-    """Storage backend for key-value data."""
-
-    vector_storage: str = field(default="NanoVectorDBStorage")
-    """Storage backend for vector embeddings."""
-
-    graph_storage: str = field(default="NetworkXStorage")
-    """Storage backend for knowledge graphs."""
-
-    doc_status_storage: str = field(default="JsonDocStatusStorage")
-    """Storage type for tracking document processing statuses."""
-
-    # Logging
-    # ---
-
-    log_level: int = field(default=logger.level)
-    """Logging level for the system (e.g., 'DEBUG', 'INFO', 'WARNING')."""
-
-    log_file_path: str = field(default=os.path.join(os.getcwd(), "lightrag.log"))
-    """Log file path."""
-
-    # Entity extraction
-    # ---
-
-    entity_extract_max_gleaning: int = field(default=1)
-    """Maximum number of entity extraction attempts for ambiguous content."""
-
-    entity_summary_to_max_tokens: int = field(
-        default=int(os.getenv("MAX_TOKEN_SUMMARY", 500))
-    )
-
-    # Text chunking
-    # ---
-
-    chunk_token_size: int = field(default=int(os.getenv("CHUNK_SIZE", 1200)))
-    """Maximum number of tokens per text chunk when splitting documents."""
-
-    chunk_overlap_token_size: int = field(
-        default=int(os.getenv("CHUNK_OVERLAP_SIZE", 100))
-    )
-    """Number of overlapping tokens between consecutive text chunks to preserve context."""
-
-    tiktoken_model_name: str = field(default="gpt-4o-mini")
-    """Model name used for tokenization when chunking text."""
-
-    """Maximum number of tokens used for summarizing extracted entities."""
-
-    chunking_func: Callable[
-        [
-            str,
-            str | None,
-            bool,
-            int,
-            int,
-            str,
-        ],
-        list[dict[str, Any]],
-    ] = field(default_factory=lambda: chunking_by_token_size)
-    """
-    Custom chunking function for splitting text into chunks before processing.
-
-    The function should take the following parameters:
-
-        - `content`: The text to be split into chunks.
-        - `split_by_character`: The character to split the text on. If None, the text is split into chunks of `chunk_token_size` tokens.
-        - `split_by_character_only`: If True, the text is split only on the specified character.
-        - `chunk_token_size`: The maximum number of tokens per chunk.
-        - `chunk_overlap_token_size`: The number of overlapping tokens between consecutive chunks.
-        - `tiktoken_model_name`: The name of the tiktoken model to use for tokenization.
-
-    The function should return a list of dictionaries, where each dictionary contains the following keys:
-        - `tokens`: The number of tokens in the chunk.
-        - `content`: The text content of the chunk.
-
-    Defaults to `chunking_by_token_size` if not specified.
-    """
-
-    # Node embedding
-    # ---
-
-    node_embedding_algorithm: str = field(default="node2vec")
-    """Algorithm used for node embedding in knowledge graphs."""
-
-    node2vec_params: dict[str, int] = field(
-        default_factory=lambda: {
+    def __init__(
+        self,
+        affinity_token: str,
+        scan_progress: Dict[str, Any],
+        progress_lock: threading.Lock,
+        storage_account_url: str,
+        storage_container_name: str,
+        llm_model_func: Callable[..., object],
+        chunk_token_size: int,
+        chunk_overlap_token_size: int,
+        llm_model_kwargs: Dict[str, Any],
+        llm_model_name: str,
+        llm_model_max_async: int,
+        llm_model_max_token_size: int,
+        embedding_func: EmbeddingFunc,
+        document_manager: DocumentManager,
+        kv_storage: str,
+        vector_storage: str,
+        graph_storage: str,
+        doc_status_storage: str,
+        vector_db_storage_cls_kwargs: Dict[str, Any],
+        enable_llm_cache_for_entity_extract: bool,
+        embedding_cache_config: Dict[str, Any],
+        log_level: int,
+        namespace_prefix: str,
+        max_parallel_insert: int,
+        cosine_threshold: float = 0.2,
+    ):
+        # which in turn target to specific set of users, therefore, affinity token
+        # stays same for all these users given this instance can handle all these requests
+        # each instance of LightRAG will be dedicated to specific storage
+        # without further initializing more LightRAG instances
+        self.affinity_token: str = affinity_token
+        self.working_dir: str = "./lightrag"
+        self.scan_progress: Dict[str, Any] = scan_progress
+        self.progress_lock = progress_lock
+        self.document_manager: DocumentManager = document_manager
+        self.storage_account_url: str = storage_account_url
+        self.storage_container_name: str = storage_container_name
+        self.kv_storage: str = kv_storage
+        self.vector_storage: str = vector_storage
+        self.graph_storage: str = graph_storage
+        self.doc_status_storage: str = doc_status_storage
+        self.log_level: int = log_level
+        self.log_file_path: str = os.path.join(os.getcwd(), "lightrag.log")
+        self.entity_extract_max_gleaning: int = 1
+        self.entity_summary_to_max_tokens: int = 500
+        self.chunk_token_size: int = chunk_token_size
+        self.chunk_overlap_token_size: int = chunk_overlap_token_size
+        self.tiktoken_model_name: str = "gpt-4o-mini"
+        self.chunking_func: Callable[
+            [
+                str,
+                str | None,
+                bool,
+                int,
+                int,
+                str,
+            ],
+            list[dict[str, Any]],
+        ] = chunking_by_token_size
+        self.node_embedding_algorithm: str = "node2vec"
+        self.node2vec_params: dict[str, int] = {
             "dimensions": 1536,
             "num_walks": 10,
             "walk_length": 40,
@@ -180,105 +133,29 @@ class LightRAG:
             "iterations": 3,
             "random_seed": 3,
         }
-    )
-    """Configuration for the node2vec embedding algorithm:
-    - dimensions: Number of dimensions for embeddings.
-    - num_walks: Number of random walks per node.
-    - walk_length: Number of steps per random walk.
-    - window_size: Context window size for training.
-    - iterations: Number of iterations for training.
-    - random_seed: Seed value for reproducibility.
-    """
-
-    # Embedding
-    # ---
-
-    embedding_func: EmbeddingFunc | None = field(default=None)
-    """Function for computing text embeddings. Must be set before use."""
-
-    embedding_batch_num: int = field(default=32)
-    """Batch size for embedding computations."""
-
-    embedding_func_max_async: int = field(default=16)
-    """Maximum number of concurrent embedding function calls."""
-
-    embedding_cache_config: dict[str, Any] = field(
-        default_factory=lambda: {
-            "enabled": False,
-            "similarity_threshold": 0.95,
-            "use_llm_check": False,
-        }
-    )
-    """Configuration for embedding cache.
-    - enabled: If True, enables caching to avoid redundant computations.
-    - similarity_threshold: Minimum similarity score to use cached embeddings.
-    - use_llm_check: If True, validates cached embeddings using an LLM.
-    """
-
-    # LLM Configuration
-    # ---
-
-    llm_model_func: Callable[..., object] | None = field(default=None)
-    """Function for interacting with the large language model (LLM). Must be set before use."""
-
-    llm_model_name: str = field(default="gpt-4o-mini")
-    """Name of the LLM model used for generating responses."""
-
-    llm_model_max_token_size: int = field(default=int(os.getenv("MAX_TOKENS", 32768)))
-    """Maximum number of tokens allowed per LLM response."""
-
-    llm_model_max_async: int = field(default=int(os.getenv("MAX_ASYNC", 16)))
-    """Maximum number of concurrent LLM calls."""
-
-    llm_model_kwargs: dict[str, Any] = field(default_factory=dict)
-    """Additional keyword arguments passed to the LLM model function."""
-
-    # Storage
-    # ---
-
-    vector_db_storage_cls_kwargs: dict[str, Any] = field(default_factory=dict)
-    """Additional parameters for vector database storage."""
-
-    namespace_prefix: str = field(default="")
-    """Prefix for namespacing stored data across different environments."""
-
-    enable_llm_cache: bool = field(default=True)
-    """Enables caching for LLM responses to avoid redundant computations."""
-
-    enable_llm_cache_for_entity_extract: bool = field(default=True)
-    """If True, enables caching for entity extraction steps to reduce LLM costs."""
-
-    # Extensions
-    # ---
-
-    max_parallel_insert: int = field(default=int(os.getenv("MAX_PARALLEL_INSERT", 20)))
-    """Maximum number of parallel insert operations."""
-
-    addon_params: dict[str, Any] = field(default_factory=dict)
-
-    # Storages Management
-    # ---
-
-    auto_manage_storages_states: bool = field(default=False)
-    """If True, lightrag will automatically calls initialize_storages and finalize_storages at the appropriate times."""
-
-    # Storages Management
-    # ---
-
-    convert_response_to_json_func: Callable[[str], dict[str, Any]] = field(
-        default_factory=lambda: convert_response_to_json
-    )
-    """
-    Custom function for converting LLM responses to JSON format.
-
-    The default function is :func:`.utils.convert_response_to_json`.
-    """
-
-    cosine_better_than_threshold: float = field(
-        default=float(os.getenv("COSINE_THRESHOLD", 0.2))
-    )
-
-    _storages_status: StoragesStatus = field(default=StoragesStatus.NOT_CREATED)
+        self.embedding_func: EmbeddingFunc = embedding_func
+        self.embedding_batch_num: int = 32
+        self.embedding_func_max_async: int = 16
+        self.embedding_cache_config: dict[str, Any] = embedding_cache_config
+        self.llm_model_func: Callable[..., object] = llm_model_func
+        self.llm_model_name: str = llm_model_name
+        self.llm_model_max_token_size: int = llm_model_max_token_size
+        self.llm_model_max_async: int = llm_model_max_async
+        self.llm_model_kwargs: dict[str, Any] = llm_model_kwargs
+        self.vector_db_storage_cls_kwargs: dict[str, Any] = vector_db_storage_cls_kwargs
+        self.namespace_prefix: str = namespace_prefix
+        self.enable_llm_cache: bool = True
+        self.enable_llm_cache_for_entity_extract: bool = (
+            enable_llm_cache_for_entity_extract
+        )
+        self.max_parallel_insert: int = max_parallel_insert
+        self.addon_params: dict[str, Any] = {}
+        self.auto_manage_storages_states: bool = False
+        self.convert_response_to_json_func: Callable[[str], dict[str, Any]] = (
+            convert_response_to_json
+        )
+        self.cosine_better_than_threshold: float = cosine_threshold
+        self._storages_status: StoragesStatus = StoragesStatus.NOT_CREATED
 
     def __post_init__(self):
         os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)

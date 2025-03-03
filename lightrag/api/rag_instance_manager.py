@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import threading
 from typing import Dict, Any
 from lightrag.az_token_credential import LightRagTokenCredential
 from ..document_manager import DocumentManager
@@ -54,7 +55,8 @@ class RAGInstanceManager:
             if rag_id in self.rag_instances:
                 return self.rag_instances[rag_id]
             else:
-
+                # This function and following embedding_func will
+                # be passed to LightRAG instance to be used for completion and embedding
                 async def azure_openai_model_complete(
                     prompt,
                     access_token,
@@ -82,16 +84,25 @@ class RAGInstanceManager:
                 embedding_func = EmbeddingFunc(
                     embedding_dim=self.args.embedding_dim,
                     max_token_size=self.args.max_embed_tokens,
-                    func=lambda texts, access_token: azure_openai_embed(
+                    func=lambda texts, aad_token: azure_openai_embed(
                         texts,
                         self.args.embedding_model,
-                        access_token,
+                        aad_token,
                         self.args.embedding_binding_host,
                         self.args.embedding_api_version,
                     ),
                 )
+                doc_manager = DocumentManager(f"./lightrag/input")
                 self.rag_instances[rag_id] = LightRAG(
                     affinity_token=rag_id,
+                    scan_progress={
+                        "is_scanning": False,
+                        "current_file": "",
+                        "indexed_count": 0,
+                        "total_files": 0,
+                        "progress": 0,
+                    },
+                    progress_lock=threading.Lock(),
                     storage_account_url=storage_account_url,
                     storage_container_name=storage_container_name,
                     llm_model_func=azure_openai_model_complete,
@@ -119,12 +130,10 @@ class RAGInstanceManager:
                     },
                     log_level=self.args.log_level,
                     namespace_prefix=self.args.namespace_prefix,
-                    auto_manage_storages_states=False,
+                    document_manager=doc_manager,
+                    max_parallel_insert=self.args.max_parallel_insert,
+                    cosine_threshold=self.args.cosine_threshold,
                 )
-                doc_manager = DocumentManager(
-                    f"{self.rag_instances[rag_id].working_dir}/input"
-                )
-                self.rag_instances[rag_id].document_manager = doc_manager
         # The storage initializing is expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.
