@@ -55,6 +55,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
             # to prevent the file from being modified while trying to read
             # we acquire a lease to make sure no ops is performing on the file
+            # also we acquire a lease on the container to prevent the container from being deleted
             lease: BlobLeaseClient = container_client.acquire_lease()
             blob_list = container_client.list_blob_names()
             blob_name = (
@@ -66,6 +67,8 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 json_data = self._client.save()
                 json_bytes = BytesIO(json_data.encode("utf-8"))
                 blob_client = container_client.get_blob_client(blob_name)
+                # reach here means the file does not exist, so with overwrite=False
+                # the operation should still succeed.
                 blob_client.upload_blob(json_bytes, overwrite=False)
                 return
             blob_client = container_client.get_blob_client(blob_name)

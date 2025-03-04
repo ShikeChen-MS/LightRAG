@@ -96,6 +96,9 @@ class NetworkXStorage(BaseGraphStorage):
                 # the operation should still succeed.
                 blob_client.upload_blob(content, overwrite=False)
                 return
+            # to prevent the file from being modified while trying to read
+            # we acquire a lease to make sure no ops is performing on the file
+            # also we acquire a lease on the container to prevent the container from being deleted
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
             content = blob_client.download_blob(lease=blob_lease).readall()

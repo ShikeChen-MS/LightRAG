@@ -25,15 +25,17 @@ from .utils_api import (
     get_lightrag_token_credential,
     extract_token_value,
 )
-from . import __api_version__, base_request
+from . import __api_version__
 from ..utils import logger
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
 
-# TODO: this is a temporary workaround for long load time for storage library
-# especially networkx and graspologic. This is expected to be fixed once migrate
-# to Azure Database server for PostgreSQL.
+# TODO: following imports are a temporary workaround for long load time
+# TODO: on graph db related module especially networkx and graspologic.
+# TODO: This expected to be fix after migrate to Azure Database server for PostgreSQL.
+# TODO: the workaround is to import the module here so LightRAG server will
+# TODO: take longer to start up but the initialization of the storage will be faster.
 import lightrag.kg.json_doc_status_impl
 import lightrag.kg.json_kv_impl
 import lightrag.kg.nano_vector_db_impl
