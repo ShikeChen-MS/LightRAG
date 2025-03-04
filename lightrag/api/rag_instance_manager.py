@@ -60,8 +60,8 @@ class RAGInstanceManager:
                 # This function and following embedding_func will
                 # be passed to LightRAG instance to be used for completion and embedding
                 async def azure_openai_model_complete(
-                    prompt,
                     access_token,
+                    prompt,
                     system_prompt=None,
                     history_messages=None,
                     keyword_extraction=False,
@@ -86,15 +86,15 @@ class RAGInstanceManager:
                 embedding_func = EmbeddingFunc(
                     embedding_dim=self.args.embedding_dim,
                     max_token_size=self.args.max_embed_tokens,
-                    func=lambda texts, aad_token: azure_openai_embed(
+                    func=lambda aad_token, texts: azure_openai_embed(
+                        aad_token,
                         texts,
                         self.args.embedding_model,
-                        aad_token,
                         self.args.embedding_binding_host,
                         self.args.embedding_api_version,
                     ),
                 )
-                doc_manager = DocumentManager(f"{self.args.working_dir}/input")
+                doc_manager = DocumentManager(f"{self.args.working_dir}/{self.args.input_dir}")
                 self.rag_instances[rag_id] = LightRAG(
                     affinity_token=rag_id,
                     working_dir=self.args.working_dir,

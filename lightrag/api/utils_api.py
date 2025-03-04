@@ -132,6 +132,13 @@ def parse_args() -> argparse.Namespace:
         help="Working (virtual) directory on Azure Storage Account (default: from env or lightrag)",
     )
 
+    parser.add_argument(
+        "--input_dir",
+        type=str,
+        default=get_env_value("INPUT_DIR", "input"),
+        help="Input directory on Azure Storage Account (default: from env or input), this will be put within working directory",
+    )
+
     def timeout_type(value):
         if value is None:
             return 150

@@ -2,6 +2,7 @@
 LightRAG FastAPI Server
 """
 
+from functools import partial
 from fastapi import (
     FastAPI,
     Depends,
@@ -174,6 +175,7 @@ def create_app(args, rag_instance_manager):
         )
         ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
         result = {}
+        # Collect all non-None arguments
         result["Status"] = "Healthy"
         for arg in vars(args):
             if getattr(args, arg) is not None:
@@ -181,6 +183,8 @@ def create_app(args, rag_instance_manager):
                 name = name.title()
                 result[name] = getattr(args, arg)
         affinity_token = ""
+        # initialize rag instance
+        # send an example prompt to the model to check if it is working
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -194,17 +198,20 @@ def create_app(args, rag_instance_manager):
                     storage_access_token, base_request.storage_token_expiry
                 ),
             )
+            original_llm_model_func = rag.llm_model_func
+            rag.llm_model_func = partial(rag.llm_model_func, ai_access_token)
             result["LLM Test Prompt"] = (
                 "Please tell me a trivial fact about the universe."
             )
-            response = await rag.llm_model_func(
-                result["LLM Test Prompt"], ai_access_token
-            )
+            response = await rag.llm_model_func(result["LLM Test Prompt"])
             result["LLM Response"] = response
             affinity_token = rag.affinity_token
         except Exception as e:
             result["Status"] = "Unhealthy"
             result["Error"] = str(e)
+        finally:
+            if rag is not None and (original_llm_model_func is not None):
+                rag.llm_model_func = original_llm_model_func
 
         return JSONResponse(
             content=result, headers={"X-Affinity-Token": affinity_token}
