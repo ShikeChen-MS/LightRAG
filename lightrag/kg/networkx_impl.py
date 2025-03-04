@@ -18,8 +18,10 @@ from graspologic import embed
 @final
 @dataclass
 class NetworkXStorage(BaseGraphStorage):
-    def __init__(self):
+    def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs: Any):
         self._graph = None
+        self.namespace = namespace
+        self.global_config = global_config
 
     @staticmethod
     def load_nx_graph(file_name) -> nx.Graph:
@@ -67,17 +69,14 @@ class NetworkXStorage(BaseGraphStorage):
         fixed_graph.add_edges_from(edges)
         return fixed_graph
 
-    def __post_init__(self):
-        self._node_embed_algorithms = {
-            "node2vec": self._node2vec_embed,
-        }
-
     async def initialize(
         self,
         storage_account_url: str,
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> None:
+        lease = None
+        blob_lease = None
         try:
             blob_client = BlobServiceClient(
                 account_url=storage_account_url, credential=access_token
@@ -90,19 +89,36 @@ class NetworkXStorage(BaseGraphStorage):
             if not blob_name in blob_list:
                 logger.info(f"Creating new graph_{self.namespace}.graphml")
                 self._graph = nx.Graph()
+                linefeed = chr(10)
+                content = linefeed.join(nx.generate_graphml(self._graph))
+                blob_client = container_client.get_blob_client(blob_name)
+                # reach here means the file does not exist, so with overwrite=False
+                # the operation should still succeed.
+                blob_client.upload_blob(content, overwrite=False)
                 return
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_lease = blob_client.acquire_lease()
             content = (
-                container_client.get_blob_client(blob_name)
-                .download_blob(lease=lease)
-                .readall()
+                blob_client.download_blob(lease=blob_lease).readall()
             )
-            lease.release()
+            blob_lease.release()
+            blob_lease = None
+            lease.release() # early release to avoid blocking
+            lease = None
             content_str = content.decode("utf-8")
             preloaded_graph = nx.parse_graphml(content_str)
             self._graph = preloaded_graph
         except Exception as e:
             logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
             raise
+        finally:
+            if lease:
+                lease.release()
+            if blob_lease:
+                blob_lease.release()
+            self._node_embed_algorithms = {
+                "node2vec": self._node2vec_embed,
+            }
 
     async def index_done_callback(
         self,
@@ -110,23 +126,38 @@ class NetworkXStorage(BaseGraphStorage):
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> None:
-        blob_client = BlobServiceClient(
-            account_url=storage_account_url, credential=access_token
-        )
-        container_client = blob_client.get_container_client(storage_container_name)
-        # this is to check if the container exists and authentication is valid
-        container_client.get_container_properties()
-        # to protect file integrity and ensure complete upload
-        # acquire lease on the container to prevent any other ops
-        lease: BlobLeaseClient = container_client.acquire_lease()
-        blob_name = (
-            f"{self.global_config["working_dir"]}/data/graph_{self.namespace}.graphml"
-        )
-        blob_client = container_client.get_blob_client(blob_name)
-        linefeed = chr(10)
-        content = linefeed.join(nx.generate_graphml(self._graph))
-        blob_client.upload_blob(content, lease=lease, overwrite=True)
-        lease.release()
+        lease = None
+        blob_lease = None
+        try:
+            blob_client = BlobServiceClient(
+                account_url=storage_account_url, credential=access_token
+            )
+            container_client = blob_client.get_container_client(storage_container_name)
+            # this is to check if the container exists and authentication is valid
+            container_client.get_container_properties()
+            # to protect file integrity and ensure complete upload
+            # acquire lease on the container to prevent any other ops
+            lease: BlobLeaseClient = container_client.acquire_lease()
+            blob_name = (
+                f"{self.global_config["working_dir"]}/data/graph_{self.namespace}.graphml"
+            )
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_lease = blob_client.acquire_lease()
+            linefeed = chr(10)
+            content = linefeed.join(nx.generate_graphml(self._graph))
+            blob_client.upload_blob(content, lease=blob_lease, overwrite=True)
+            blob_lease.release()
+            blob_lease = None
+            lease.release()
+            lease = None
+        except Exception as e:
+            logger.warning(f"Failed to save graph to Azure Blob Storage: {e}")
+            raise
+        finally:
+            if lease:
+                lease.release()
+            if blob_lease:
+                blob_lease.release()
 
     async def has_node(self, node_id: str) -> bool:
         return self._graph.has_node(node_id)

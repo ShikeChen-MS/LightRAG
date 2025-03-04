@@ -15,7 +15,7 @@ from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
 from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
-from ..base import StoragesStatus
+from ..base import StoragesStatus, InitializeStatus
 
 # Load environment variables
 load_dotenv(override=True)
@@ -213,6 +213,12 @@ def parse_args() -> argparse.Namespace:
         default=get_env_value("COSINE_THRESHOLD", 0.2, float),
         help="Cosine similarity threshold (default: from env or 0.4)",
     )
+    parser.add_argument(
+        "--max-parallel-insert",
+        type=int,
+        default=get_env_value("MAX_PARALLEL_INSERT", 20, int),
+        help="Maximum number of parallel insert operations (default: from env or 20)",
+    )
 
     # Namespace
     parser.add_argument(
@@ -260,11 +266,9 @@ def parse_args() -> argparse.Namespace:
 async def wait_for_storage_initialization(
     rag: LightRAG, token: LightRagTokenCredential
 ):
-    if rag.check_storage_status() == StoragesStatus.INITIALIZED.value:
+    if rag.initialize_status == InitializeStatus.INITIALIZED.value:
         return
-    if rag.check_storage_status() == StoragesStatus.CREATED.value:
-        await rag.initialize_storages(token)
-    while rag.check_storage_status() == StoragesStatus.INITIALIZING.value:
+    if rag.initialize_status == InitializeStatus.INITIALIZING.value:
         await asyncio.sleep(3)
     raise HTTPException(status_code=500, detail="Storage initialization failed...")
 

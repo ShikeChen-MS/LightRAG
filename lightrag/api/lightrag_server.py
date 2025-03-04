@@ -22,13 +22,22 @@ from .utils_api import (
     display_splash_screen,
     initialize_rag,
     wait_for_storage_initialization,
-    get_lightrag_token_credential,
+    get_lightrag_token_credential, extract_token_value,
 )
 from . import __api_version__, base_request
 from ..utils import logger
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
+
+# TODO: this is a temporary workaround for long load time for storage library
+# especially networkx and graspologic. This is epected to be fixed once migrate
+# to Azure Database server for PostgreSQL.
+import lightrag.kg.json_doc_status_impl
+import lightrag.kg.json_kv_impl
+import lightrag.kg.nano_vector_db_impl
+import lightrag.kg.networkx_impl
+
 
 # Load environment variables
 try:
@@ -157,6 +166,12 @@ def create_app(args, rag_instance_manager):
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """Get current system status"""
+        storage_access_token = extract_token_value(
+            storage_access_token, "Storage_Access_Token"
+        )
+        ai_access_token = extract_token_value(
+            ai_access_token, "Azure-AI-Access-Token"
+        )
         result = {}
         result["Status"] = "Healthy"
         for arg in vars(args):
@@ -164,6 +179,7 @@ def create_app(args, rag_instance_manager):
                 name = arg.replace("_", " ")
                 name = name.title()
                 result[name] = getattr(args, arg)
+        affinity_token = ""
         try:
             rag = initialize_rag(
                 rag_instance_manager,
@@ -177,11 +193,15 @@ def create_app(args, rag_instance_manager):
                     storage_access_token, base_request.storage_token_expiry
                 ),
             )
+            result["LLM Prompt"] = 'Please tell me a trivial fact about the universe.'
+            response = await rag.llm_model_func(result['LLM Prompt'], ai_access_token)
+            result["LLM Response"] = response
+            affinity_token = rag.affinity_token
         except Exception as e:
             result["Status"] = "Unhealthy"
             result["Error"] = str(e)
 
-        return JSONResponse(content=result)
+        return JSONResponse(content=result, headers={"X-Affinity-Token": affinity_token})
 
     return app
 

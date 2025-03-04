@@ -3,6 +3,7 @@ import hashlib
 import threading
 from typing import Dict, Any
 from lightrag.az_token_credential import LightRagTokenCredential
+from ..base import InitializeStatus
 from ..document_manager import DocumentManager
 from ..lightrag import LightRAG
 from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
@@ -40,18 +41,19 @@ class RAGInstanceManager:
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> Any:
+        # calculating the hash of storage account url + container name
+        # and take the hash(since SHA256 has fixed length of 64 characters as the id,
+        # this also serves as affinity token;
+        # given that same storage account url + container name
+        # will always point to one LightRAG storage.
+        connection_str = storage_account_url
+        if not storage_account_url.endswith("/"):
+            connection_str = storage_account_url + "/"
+        connection_str += storage_container_name
+        connection_str = connection_str.lower()
+        hash_object = hashlib.sha256(connection_str.encode())
+        rag_id = hash_object.hexdigest()
         async with self._lock:
-            # calculating the hash of storage account url + container name
-            # and take the hash(since SHA256 has fixed length of 64 characters as the id,
-            # this also serves as affinity token;
-            # given that same storage account url + container name
-            # will always point to one LightRAG storage.
-            if not storage_account_url.endswith("/"):
-                connection_str = storage_account_url + "/"
-            connection_str += storage_container_name
-            connection_str = connection_str.lower()
-            hash_object = hashlib.sha256(connection_str.encode())
-            rag_id = hash_object.hexdigest()
             if rag_id in self.rag_instances:
                 return self.rag_instances[rag_id]
             else:
@@ -92,7 +94,7 @@ class RAGInstanceManager:
                         self.args.embedding_api_version,
                     ),
                 )
-                doc_manager = DocumentManager(f"./lightrag/input")
+                doc_manager = DocumentManager(f"lightrag/input")
                 self.rag_instances[rag_id] = LightRAG(
                     affinity_token=rag_id,
                     scan_progress={
@@ -134,14 +136,14 @@ class RAGInstanceManager:
                     max_parallel_insert=self.args.max_parallel_insert,
                     cosine_threshold=self.args.cosine_threshold,
                 )
+                self.rag_instances[rag_id].initialize_status = InitializeStatus.INITIALIZING
         # The storage initializing is expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.
-        # # After LightRAG instance created, storage should be marked as CREATED.
-        # # After invoke initialize, storage should be marked as INITIALIZING.
-        # # After initializing done, storage should be marked as INITIALIZED.
-        # # Only then we can proceed with any ops on storage.
-        await self.rag_instances[rag_id].initialize_storages(access_token)
+        try:
+            await self.rag_instances[rag_id].initialize_storages(access_token)
+        except Exception as e:
+            print(f"Failed to initialize storage for {rag_id}: {e}")
         return self.rag_instances[rag_id]
 
     async def get_rag_instance_by_affinity_token(self, affinity_token: str) -> LightRAG:

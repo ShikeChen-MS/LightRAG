@@ -1,5 +1,7 @@
 import asyncio
+import json
 from dataclasses import dataclass
+from io import BytesIO
 from typing import Any, final
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from ..az_token_credential import LightRagTokenCredential
@@ -15,9 +17,11 @@ from ..utils import (
 @final
 @dataclass
 class JsonKVStorage(BaseKVStorage):
-    def __init__(self):
+    def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs: Any):
         self._data = None
         self._lock = asyncio.Lock()
+        self.global_config = global_config
+        self.namespace = namespace
 
     async def initialize(
         self,
@@ -25,6 +29,8 @@ class JsonKVStorage(BaseKVStorage):
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> None:
+        lease = None
+        blob_lease = None
         try:
             blob_client = BlobServiceClient(
                 account_url=storage_account_url, credential=access_token
@@ -37,16 +43,30 @@ class JsonKVStorage(BaseKVStorage):
             if not blob_name in blob_list:
                 logger.info(f"Creating new kv_store_{self.namespace}.json")
                 self._data: dict[str, Any] = {}
+                json_data = json.dumps(self._data)
+                json_bytes = BytesIO(json_data.encode('utf-8'))
+                blob_client = container_client.get_blob_client(blob_name)
+                blob_client.upload_blob(json_bytes, overwrite=False)
                 return
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_lease = blob_client.acquire_lease()
             content = (
-                container_client.get_blob_client(blob_name).download_blob().readall()
+                blob_client.download_blob(lease=blob_lease).readall()
             )
+            blob_lease.release()
+            blob_lease = None
             lease.release()
+            lease = None
             content_str = content.decode("utf-8")
-            self._data = load_json(content_str)
+            self._data = json.loads(content_str)
         except Exception as e:
             logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
             raise
+        finally:
+            if lease:
+                lease.release()
+            if blob_lease:
+                blob_lease.release()
 
     async def index_done_callback(
         self,
@@ -54,22 +74,37 @@ class JsonKVStorage(BaseKVStorage):
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> None:
-        blob_client = BlobServiceClient(
-            account_url=storage_account_url, credential=access_token
-        )
-        container_client = blob_client.get_container_client(storage_container_name)
-        # this is to check if the container exists and authentication is valid
-        container_client.get_container_properties()
-        # to protect file integrity and ensure complete upload
-        # acquire lease on the container to prevent any other ops
-        lease: BlobLeaseClient = container_client.acquire_lease()
-        blob_name = (
-            f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
-        )
-        blob_client = container_client.get_blob_client(blob_name)
-        with self._lock:
-            blob_client.upload_blob(self._data, lease=lease, overwrite=True)
-        lease.release()
+        lease = None
+        blob_lease = None
+        try:
+            blob_client = BlobServiceClient(
+                account_url=storage_account_url, credential=access_token
+            )
+            container_client = blob_client.get_container_client(storage_container_name)
+            # this is to check if the container exists and authentication is valid
+            container_client.get_container_properties()
+            # to protect file integrity and ensure complete upload
+            # acquire lease on the container to prevent any other ops
+            lease: BlobLeaseClient = container_client.acquire_lease()
+            blob_name = (
+                f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
+            )
+            blob_client = container_client.get_blob_client(blob_name)
+            blob_lease = blob_client.acquire_lease()
+            with self._lock:
+                blob_client.upload_blob(self._data, lease=blob_lease, overwrite=True)
+            blob_lease.release()
+            blob_lease = None
+            lease.release()
+            lease = None
+        except Exception as e:
+            logger.warning(f"Failed to upload graph to Azure Blob Storage: {e}")
+            raise
+        finally:
+            if lease:
+                lease.release()
+            if blob_lease:
+                blob_lease.release()
 
     async def get_by_id(self, id: str) -> dict[str, Any] | None:
         return self._data.get(id)

@@ -3,7 +3,7 @@ import asyncio
 import configparser
 import os
 import threading
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
 
@@ -24,7 +24,7 @@ from .base import (
     DocStatusStorage,
     QueryParam,
     StorageNameSpace,
-    StoragesStatus,
+    StoragesStatus, InitializeStatus,
 )
 from .namespace import NameSpace, make_namespace
 from .operate import (
@@ -60,6 +60,7 @@ config.read("config.ini", "utf-8")
 
 
 @final
+@dataclass
 class LightRAG:
     """LightRAG: Simple and Fast Retrieval-Augmented Generation."""
 
@@ -96,7 +97,7 @@ class LightRAG:
         # each instance of LightRAG will be dedicated to specific storage
         # without further initializing more LightRAG instances
         self.affinity_token: str = affinity_token
-        self.working_dir: str = "./lightrag"
+        self.working_dir: str = "lightrag"
         self.scan_progress: Dict[str, Any] = scan_progress
         self.progress_lock = progress_lock
         self.document_manager: DocumentManager = document_manager
@@ -156,16 +157,7 @@ class LightRAG:
         )
         self.cosine_better_than_threshold: float = cosine_threshold
         self._storages_status: StoragesStatus = StoragesStatus.NOT_CREATED
-
-    def __post_init__(self):
-        os.makedirs(os.path.dirname(self.log_file_path), exist_ok=True)
-        set_logger(self.log_file_path, self.log_level)
-        logger.info(f"Logger initialized for working directory: {self.working_dir}")
-
-        if not os.path.exists(self.working_dir):
-            logger.info(f"Creating working directory {self.working_dir}")
-            os.makedirs(self.working_dir)
-
+        self.initialize_status: InitializeStatus = InitializeStatus.NOT_INITIALIZED
         # Verify storage implementation compatibility and environment variables
         storage_configs = [
             ("KV_STORAGE", self.kv_storage),
@@ -187,7 +179,7 @@ class LightRAG:
         }
 
         # Show config
-        global_config = asdict(self)
+        global_config = self.__dict__
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in global_config.items()])
         logger.debug(f"LightRAG init with param:\n  {_print_config}\n")
 
@@ -196,7 +188,36 @@ class LightRAG:
             self.embedding_func
         )
 
+
+    def __del__(self):
+        if self.auto_manage_storages_states:
+            self._run_async_safely(self.finalize_storages, "Storage Finalization")
+
+    def check_storage_status(self):
+        return self._storages_status.value
+
+    def _run_async_safely(self, async_func, action_name=""):
+        """Safely execute an async function, avoiding event loop conflicts."""
+        try:
+            loop = always_get_an_event_loop()
+            if loop.is_running():
+                task = loop.create_task(async_func())
+                task.add_done_callback(
+                    lambda t: logger.info(f"{action_name} completed!")
+                )
+            else:
+                loop.run_until_complete(async_func())
+        except RuntimeError:
+            logger.warning(
+                f"No running event loop, creating a new loop for {action_name}."
+            )
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(async_func())
+            loop.close()
+
+    async def initialize_storages(self, storage_token: LightRagTokenCredential):
         # Initialize all storages
+        global_config = self.__dict__
         self.key_string_value_json_storage_cls: type[BaseKVStorage] = (
             self._get_storage_class(self.kv_storage)
         )  # type: ignore
@@ -292,39 +313,7 @@ class LightRAG:
                 **self.llm_model_kwargs,
             )
         )
-
         self._storages_status = StoragesStatus.CREATED
-
-        # if self.auto_manage_storages_states:
-        # self._run_async_safely(self.initialize_storages, "Storage Initialization")
-
-    def __del__(self):
-        if self.auto_manage_storages_states:
-            self._run_async_safely(self.finalize_storages, "Storage Finalization")
-
-    def check_storage_status(self):
-        return self._storages_status.value
-
-    def _run_async_safely(self, async_func, action_name=""):
-        """Safely execute an async function, avoiding event loop conflicts."""
-        try:
-            loop = always_get_an_event_loop()
-            if loop.is_running():
-                task = loop.create_task(async_func())
-                task.add_done_callback(
-                    lambda t: logger.info(f"{action_name} completed!")
-                )
-            else:
-                loop.run_until_complete(async_func())
-        except RuntimeError:
-            logger.warning(
-                f"No running event loop, creating a new loop for {action_name}."
-            )
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(async_func())
-            loop.close()
-
-    async def initialize_storages(self, storage_token: LightRagTokenCredential):
         """Asynchronously initialize the storages"""
         if self._storages_status == StoragesStatus.CREATED:
             self._storages_status = StoragesStatus.INITIALIZING
@@ -351,6 +340,7 @@ class LightRAG:
             await asyncio.gather(*tasks)
 
             self._storages_status = StoragesStatus.INITIALIZED
+            self.initialize_status = InitializeStatus.INITIALIZED
             logger.debug("Initialized Storages")
 
     async def finalize_storages(self):
@@ -712,7 +702,7 @@ class LightRAG:
                 entity_vdb=self.entities_vdb,
                 relationships_vdb=self.relationships_vdb,
                 llm_response_cache=self.llm_response_cache,
-                global_config=asdict(self),
+                global_config=self.__dict__,
             )
         except Exception as e:
             logger.error("Failed to extract entities and relationships")
@@ -933,7 +923,7 @@ class LightRAG:
                 self.relationships_vdb,
                 self.text_chunks,
                 param,
-                asdict(self),
+                self.__dict__,
                 hashing_kv=(
                     self.llm_response_cache
                     if self.llm_response_cache
@@ -942,7 +932,7 @@ class LightRAG:
                         namespace=make_namespace(
                             self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                         ),
-                        global_config=asdict(self),
+                        global_config=self.__dict__,
                         embedding_func=self.embedding_func,
                     )
                 ),
@@ -954,7 +944,7 @@ class LightRAG:
                 self.chunks_vdb,
                 self.text_chunks,
                 param,
-                asdict(self),
+                self.__dict__,
                 hashing_kv=(
                     self.llm_response_cache
                     if self.llm_response_cache
@@ -963,7 +953,7 @@ class LightRAG:
                         namespace=make_namespace(
                             self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                         ),
-                        global_config=asdict(self),
+                        global_config=self.__dict__,
                         embedding_func=self.embedding_func,
                     )
                 ),
@@ -978,7 +968,7 @@ class LightRAG:
                 self.chunks_vdb,
                 self.text_chunks,
                 param,
-                asdict(self),
+                self.__dict__,
                 hashing_kv=(
                     self.llm_response_cache
                     if self.llm_response_cache
@@ -987,7 +977,7 @@ class LightRAG:
                         namespace=make_namespace(
                             self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                         ),
-                        global_config=asdict(self),
+                        global_config=self.__dict__,
                         embedding_func=self.embedding_func,
                     )
                 ),
@@ -1023,13 +1013,13 @@ class LightRAG:
         hl_keywords, ll_keywords = await extract_keywords_only(
             text=query,
             param=param,
-            global_config=asdict(self),
+            global_config=self.__dict__,
             hashing_kv=self.llm_response_cache
             or self.key_string_value_json_storage_cls(
                 namespace=make_namespace(
                     self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                 ),
-                global_config=asdict(self),
+                global_config=self.__dict__,
                 embedding_func=self.embedding_func,
             ),
         )
@@ -1054,7 +1044,7 @@ class LightRAG:
                 self.relationships_vdb,
                 self.text_chunks,
                 param,
-                asdict(self),
+                self.__dict__,
                 hashing_kv=(
                     self.llm_response_cache
                     if self.llm_response_cache
@@ -1063,7 +1053,7 @@ class LightRAG:
                         namespace=make_namespace(
                             self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                         ),
-                        global_config=asdict(self),
+                        global_config=self.__dict__,
                         embedding_func=self.embedding_func,
                     )
                 ),
@@ -1074,7 +1064,7 @@ class LightRAG:
                 self.chunks_vdb,
                 self.text_chunks,
                 param,
-                asdict(self),
+                self.__dict__,
                 hashing_kv=(
                     self.llm_response_cache
                     if self.llm_response_cache
@@ -1083,7 +1073,7 @@ class LightRAG:
                         namespace=make_namespace(
                             self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                         ),
-                        global_config=asdict(self),
+                        global_config=self.__dict__,
                         embedding_func=self.embedding_func,
                     )
                 ),
@@ -1097,7 +1087,7 @@ class LightRAG:
                 self.chunks_vdb,
                 self.text_chunks,
                 param,
-                asdict(self),
+                self.__dict__,
                 hashing_kv=(
                     self.llm_response_cache
                     if self.llm_response_cache
@@ -1106,7 +1096,7 @@ class LightRAG:
                         namespace=make_namespace(
                             self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                         ),
-                        global_config=asdict(self),
+                        global_config=self.__dict__,
                         embedding_func=self.embedding_func,
                     )
                 ),

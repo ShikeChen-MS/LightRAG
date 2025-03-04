@@ -70,7 +70,12 @@ class NanoVectorDB:
         if self.storage_data is None:
             storage: DataBase = default_storage
         else:
-            storage: DataBase = json.loads(self.storage_data)
+            data = json.loads(self.storage_data)
+            data["matrix"] = buffer_string_to_array(data["matrix"]).reshape(
+                -1, data["embedding_dim"]
+            )
+            logger.info(f"Load {data['matrix'].shape} data")
+            storage: DataBase = data
         assert (
             storage["embedding_dim"] == self.embedding_dim
         ), f"Embedding dim mismatch, expected: {self.embedding_dim}, but loaded: {storage['embedding_dim']}"
