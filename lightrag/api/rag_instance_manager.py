@@ -94,9 +94,10 @@ class RAGInstanceManager:
                         self.args.embedding_api_version,
                     ),
                 )
-                doc_manager = DocumentManager(f"lightrag/input")
+                doc_manager = DocumentManager(f"{self.args.working_dir}/input")
                 self.rag_instances[rag_id] = LightRAG(
                     affinity_token=rag_id,
+                    working_dir=self.args.working_dir,
                     scan_progress={
                         "is_scanning": False,
                         "current_file": "",

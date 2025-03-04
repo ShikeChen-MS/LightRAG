@@ -67,6 +67,7 @@ class LightRAG:
     def __init__(
         self,
         affinity_token: str,
+        working_dir: str,
         scan_progress: Dict[str, Any],
         progress_lock: threading.Lock,
         storage_account_url: str,
@@ -97,7 +98,7 @@ class LightRAG:
         # each instance of LightRAG will be dedicated to specific storage
         # without further initializing more LightRAG instances
         self.affinity_token: str = affinity_token
-        self.working_dir: str = "lightrag"
+        self.working_dir: str = working_dir
         self.scan_progress: Dict[str, Any] = scan_progress
         self.progress_lock = progress_lock
         self.document_manager: DocumentManager = document_manager

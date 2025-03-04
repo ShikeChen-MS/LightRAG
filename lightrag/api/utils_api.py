@@ -125,6 +125,12 @@ def parse_args() -> argparse.Namespace:
         default=get_env_value("PORT", 9621, int),
         help="Server port (default: from env or 9621)",
     )
+    parser.add_argument(
+        "--working_dir",
+        type=str,
+        default=get_env_value("WORKING_DIR", "lightrag"),
+        help="Working (virtual) directory on Azure Storage Account (default: from env or lightrag)",
+    )
 
     def timeout_type(value):
         if value is None:

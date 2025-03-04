@@ -31,7 +31,7 @@ from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
 
 # TODO: this is a temporary workaround for long load time for storage library
-# especially networkx and graspologic. This is epected to be fixed once migrate
+# especially networkx and graspologic. This is expected to be fixed once migrate
 # to Azure Database server for PostgreSQL.
 import lightrag.kg.json_doc_status_impl
 import lightrag.kg.json_kv_impl
@@ -193,8 +193,8 @@ def create_app(args, rag_instance_manager):
                     storage_access_token, base_request.storage_token_expiry
                 ),
             )
-            result["LLM Prompt"] = 'Please tell me a trivial fact about the universe.'
-            response = await rag.llm_model_func(result['LLM Prompt'], ai_access_token)
+            result["LLM Test Prompt"] = 'Please tell me a trivial fact about the universe.'
+            response = await rag.llm_model_func(result['LLM Test Prompt'], ai_access_token)
             result["LLM Response"] = response
             affinity_token = rag.affinity_token
         except Exception as e:
