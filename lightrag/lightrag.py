@@ -24,7 +24,8 @@ from .base import (
     DocStatusStorage,
     QueryParam,
     StorageNameSpace,
-    StoragesStatus, InitializeStatus,
+    StoragesStatus,
+    InitializeStatus,
 )
 from .namespace import NameSpace, make_namespace
 from .operate import (
@@ -188,7 +189,6 @@ class LightRAG:
         self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(  # type: ignore
             self.embedding_func
         )
-
 
     def __del__(self):
         if self.auto_manage_storages_states:

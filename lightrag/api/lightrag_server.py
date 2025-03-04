@@ -22,7 +22,8 @@ from .utils_api import (
     display_splash_screen,
     initialize_rag,
     wait_for_storage_initialization,
-    get_lightrag_token_credential, extract_token_value,
+    get_lightrag_token_credential,
+    extract_token_value,
 )
 from . import __api_version__, base_request
 from ..utils import logger
@@ -169,9 +170,7 @@ def create_app(args, rag_instance_manager):
         storage_access_token = extract_token_value(
             storage_access_token, "Storage_Access_Token"
         )
-        ai_access_token = extract_token_value(
-            ai_access_token, "Azure-AI-Access-Token"
-        )
+        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
         result = {}
         result["Status"] = "Healthy"
         for arg in vars(args):
@@ -193,15 +192,21 @@ def create_app(args, rag_instance_manager):
                     storage_access_token, base_request.storage_token_expiry
                 ),
             )
-            result["LLM Test Prompt"] = 'Please tell me a trivial fact about the universe.'
-            response = await rag.llm_model_func(result['LLM Test Prompt'], ai_access_token)
+            result["LLM Test Prompt"] = (
+                "Please tell me a trivial fact about the universe."
+            )
+            response = await rag.llm_model_func(
+                result["LLM Test Prompt"], ai_access_token
+            )
             result["LLM Response"] = response
             affinity_token = rag.affinity_token
         except Exception as e:
             result["Status"] = "Unhealthy"
             result["Error"] = str(e)
 
-        return JSONResponse(content=result, headers={"X-Affinity-Token": affinity_token})
+        return JSONResponse(
+            content=result, headers={"X-Affinity-Token": affinity_token}
+        )
 
     return app
 

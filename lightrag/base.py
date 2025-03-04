@@ -282,9 +282,10 @@ class StoragesStatus(str, Enum):
     INITIALIZED = "initialized"
     FINALIZED = "finalized"
 
+
 class InitializeStatus(str, Enum):
     """Initializer status"""
 
-    NOT_INITIALIZED="not_initialized"
-    INITIALIZING="initializing"
-    INITIALIZED="initialized"
+    NOT_INITIALIZED = "not_initialized"
+    INITIALIZING = "initializing"
+    INITIALIZED = "initialized"

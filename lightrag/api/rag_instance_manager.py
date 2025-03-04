@@ -137,7 +137,9 @@ class RAGInstanceManager:
                     max_parallel_insert=self.args.max_parallel_insert,
                     cosine_threshold=self.args.cosine_threshold,
                 )
-                self.rag_instances[rag_id].initialize_status = InitializeStatus.INITIALIZING
+                self.rag_instances[rag_id].initialize_status = (
+                    InitializeStatus.INITIALIZING
+                )
         # The storage initializing is expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.

@@ -64,25 +64,25 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 logger.info(f"Creating new vdb_{self.namespace}.json")
                 self._client = NanoVectorDB(self.embedding_func.embedding_dim)
                 json_data = self._client.save()
-                json_bytes = BytesIO(json_data.encode('utf-8'))
+                json_bytes = BytesIO(json_data.encode("utf-8"))
                 blob_client = container_client.get_blob_client(blob_name)
                 blob_client.upload_blob(json_bytes, overwrite=False)
                 return
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
-            content = (
-                blob_client.download_blob(lease=blob_lease).readall()
-            )
+            content = blob_client.download_blob(lease=blob_lease).readall()
             blob_lease.release()
             blob_lease = None
-            lease.release() # early release to avoid blocking
+            lease.release()  # early release to avoid blocking
             lease = None
             content_str = content.decode("utf-8")
             self._client = NanoVectorDB(
                 self.embedding_func.embedding_dim, storage_data=content_str
             )
         except Exception as e:
-            logger.warning(f"Failed to load vector database from Azure Blob Storage: {e}")
+            logger.warning(
+                f"Failed to load vector database from Azure Blob Storage: {e}"
+            )
             raise
         finally:
             if lease:

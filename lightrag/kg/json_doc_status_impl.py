@@ -21,7 +21,7 @@ from ..utils import (
 class JsonDocStatusStorage(DocStatusStorage):
     """JSON implementation of document status storage"""
 
-    def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs:Any):
+    def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs: Any):
         self._data = None
         self._lock = asyncio.Lock()
         self.namespace = namespace
@@ -48,15 +48,13 @@ class JsonDocStatusStorage(DocStatusStorage):
                 logger.info(f"Creating new kv_store_{self.namespace}.json")
                 self._data: dict[str, Any] = {}
                 json_data = json.dumps(self._data)
-                json_bytes = BytesIO(json_data.encode('utf-8'))
+                json_bytes = BytesIO(json_data.encode("utf-8"))
                 blob_client = container_client.get_blob_client(blob_name)
                 blob_client.upload_blob(json_bytes, overwrite=False)
                 return
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
-            content = (
-                blob_client.download_blob(lease=blob_lease).readall()
-            )
+            content = blob_client.download_blob(lease=blob_lease).readall()
             blob_lease.release()
             blob_lease = None
             lease.release()
@@ -128,9 +126,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             # to protect file integrity and ensure complete upload
             # acquire lease on the container to prevent any other ops
             lease: BlobLeaseClient = container_client.acquire_lease()
-            blob_name = (
-                f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
-            )
+            blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
             with self._lock:

@@ -98,12 +98,10 @@ class NetworkXStorage(BaseGraphStorage):
                 return
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
-            content = (
-                blob_client.download_blob(lease=blob_lease).readall()
-            )
+            content = blob_client.download_blob(lease=blob_lease).readall()
             blob_lease.release()
             blob_lease = None
-            lease.release() # early release to avoid blocking
+            lease.release()  # early release to avoid blocking
             lease = None
             content_str = content.decode("utf-8")
             preloaded_graph = nx.parse_graphml(content_str)
@@ -138,9 +136,7 @@ class NetworkXStorage(BaseGraphStorage):
             # to protect file integrity and ensure complete upload
             # acquire lease on the container to prevent any other ops
             lease: BlobLeaseClient = container_client.acquire_lease()
-            blob_name = (
-                f"{self.global_config["working_dir"]}/data/graph_{self.namespace}.graphml"
-            )
+            blob_name = f"{self.global_config["working_dir"]}/data/graph_{self.namespace}.graphml"
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
             linefeed = chr(10)

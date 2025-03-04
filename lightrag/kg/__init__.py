@@ -1,9 +1,6 @@
 STORAGE_IMPLEMENTATIONS = {
     "KV_STORAGE": {
-        "implementations": [
-            "JsonKVStorage",
-            "PGKVStorage"
-        ],
+        "implementations": ["JsonKVStorage", "PGKVStorage"],
         "required_methods": ["get_by_id", "upsert"],
     },
     "GRAPH_STORAGE": {
