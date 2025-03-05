@@ -162,18 +162,16 @@ def create_app(args, rag_instance_manager):
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
-        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
-        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
-        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_container_name: str = Header(alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(
+            default=None, alias="Storage_Access_Token_Expiry"
+        ),
+        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """Get current system status"""
-        storage_access_token = extract_token_value(
-            storage_access_token, "Storage_Access_Token"
-        )
-        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
         result = {}
         # Collect all non-None arguments
         result["Status"] = "Healthy"
@@ -186,6 +184,12 @@ def create_app(args, rag_instance_manager):
         # initialize rag instance
         # send an example prompt to the model to check if it is working
         try:
+            storage_access_token = extract_token_value(
+                storage_access_token, "Storage_Access_Token"
+            )
+            ai_access_token = extract_token_value(
+                ai_access_token, "Azure-AI-Access-Token"
+            )
             rag = initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,

@@ -123,14 +123,16 @@ class BaseVectorStorage(StorageNameSpace, ABC):
         pass
 
     @abstractmethod
-    async def query(self, query: str, top_k: int) -> list[dict[str, Any]]:
+    async def query(
+            self,
+            ai_access_token: str,
+            query: str,
+            top_k: int) -> list[dict[str, Any]]:
         """Query the vector storage and retrieve top_k results."""
 
     @abstractmethod
     async def upsert(
-            self,
-            data: dict[str, dict[str, Any]],
-            ai_access_token: str
+        self, data: dict[str, dict[str, Any]], ai_access_token: str
     ) -> None:
         """Insert or update vectors in the storage."""
 
@@ -160,10 +162,7 @@ class BaseKVStorage(StorageNameSpace, ABC):
         """Return un-exist keys"""
 
     @abstractmethod
-    async def upsert(
-            self,
-            data: dict[str, dict[str, Any]]
-    ) -> None:
+    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         """Upsert data"""
 
 
@@ -268,6 +267,7 @@ class DocProcessingStatus:
 @dataclass
 class DocStatusStorage(StorageNameSpace, ABC):
     """Base class for document status storage"""
+
     @abstractmethod
     async def get_by_id(self, id: str) -> dict[str, Any] | None:
         """Get value by id"""
@@ -292,11 +292,11 @@ class DocStatusStorage(StorageNameSpace, ABC):
 
     @abstractmethod
     async def upsert(
-            self,
-            data: dict[str, dict[str, Any]],
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
+        self,
+        data: dict[str, dict[str, Any]],
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> None:
         """Upsert data"""
 

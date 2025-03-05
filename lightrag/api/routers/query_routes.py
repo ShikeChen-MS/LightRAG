@@ -12,6 +12,8 @@ from fastapi import (
     HTTPException,
     Header,
 )
+
+from ... import LightRAG
 from ...base import QueryParam
 from ..utils_api import (
     get_api_key_dependency,
@@ -22,7 +24,6 @@ from ..utils_api import (
 )
 from pydantic import BaseModel, Field, field_validator
 from ascii_colors import trace_exception
-from ... import LightRAG
 
 router = APIRouter(tags=["query"])
 
@@ -159,39 +160,28 @@ def create_query_routes(
     )
     async def query_text(
         request: QueryRequest,
-        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
-        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
-        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_container_name: str = Header(alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(
+            default=None, alias="Storage_Access_Token_Expiry"
+        ),
+        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
-
-        Parameters:
-            request (QueryRequest): The request object containing the query parameters.
-        Returns:
-            QueryResponse: A Pydantic model containing the result of the query processing.
-                       If a string is returned (e.g., cache hit), it's directly returned.
-                       Otherwise, an async generator may be used to build the response.
-
-        Raises:
-            HTTPException: Raised when an error occurs during the request handling process,
-                       with status code 500 and detail containing the exception message.
         """
-        if not ai_access_token or not storage_access_token:
-            raise HTTPException(
-                status_code=401,
-                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
-            )
-        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(
-            storage_access_token, "Storage_Access_Token"
-        )
         try:
+            ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+            storage_access_token = extract_token_value(
+                storage_access_token, "Storage_Access_Token"
+            )
+            lightrag_token = get_lightrag_token_credential(
+                storage_access_token, storage_token_expiry
+            )
             param = request.to_query_params(False)
-            rag = initialize_rag_with_header(
+            rag: LightRAG = initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -205,7 +195,14 @@ def create_query_routes(
                     storage_access_token, storage_token_expiry
                 ),
             )
-            response = await rag.aquery(request.query, param=param)
+            response = await rag.aquery(
+                request.query,
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
+                lightrag_token,
+                param=param
+            )
 
             # If response is a string (e.g. cache hit), return directly
             if isinstance(response, str):
@@ -228,11 +225,13 @@ def create_query_routes(
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
     async def query_text_stream(
         request: QueryRequest,
-        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
-        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
-        ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(None, alias="Storage_Access_Token"),
+        storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_container_name: str = Header(alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(
+            default=None, alias="Storage_Access_Token_Expiry"
+        ),
+        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
         """

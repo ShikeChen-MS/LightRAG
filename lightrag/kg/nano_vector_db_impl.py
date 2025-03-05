@@ -97,9 +97,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
         return self._client
 
     async def upsert(
-            self,
-            data: dict[str, dict[str, Any]],
-            ai_access_token: str
+        self, data: dict[str, dict[str, Any]], ai_access_token: str
     ) -> None:
         logger.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
@@ -120,7 +118,9 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             for i in range(0, len(contents), self._max_batch_size)
         ]
 
-        embedding_tasks = [self.embedding_func(ai_access_token, batch) for batch in batches]
+        embedding_tasks = [
+            self.embedding_func(ai_access_token, batch) for batch in batches
+        ]
         embeddings_list = await asyncio.gather(*embedding_tasks)
 
         embeddings = np.concatenate(embeddings_list)
@@ -135,8 +135,13 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 f"embedding is not 1-1 with data, {len(embeddings)} != {len(list_data)}"
             )
 
-    async def query(self, query: str, top_k: int) -> list[dict[str, Any]]:
-        embedding = await self.embedding_func([query])
+    async def query(
+            self,
+            ai_access_token: str,
+            query: str,
+            top_k: int
+    ) -> list[dict[str, Any]]:
+        embedding = await self.embedding_func(ai_access_token, [query])
         embedding = embedding[0]
         results = self._client.query(
             query=embedding,

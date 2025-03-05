@@ -8,7 +8,7 @@ import argparse
 from typing import Optional
 import sys
 from ascii_colors import ASCIIColors
-
+from azure.storage.blob import BlobLeaseClient, BlobClient, ContainerClient
 from . import __api_version__
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
@@ -17,6 +17,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
 from ..base import InitializeStatus
+from ..utils import logger
 
 # Load environment variables
 load_dotenv(override=True)
@@ -313,6 +314,29 @@ def initialize_rag_with_header(
 
 def get_lightrag_token_credential(storage_access_token, storage_token_expiry):
     return LightRagTokenCredential(storage_access_token, storage_token_expiry)
+
+
+async def try_get_container_lease(
+    client: ContainerClient | BlobClient,
+) -> BlobLeaseClient:
+    retry_count = 0
+    lease = None
+    while lease is None and retry_count < 50:
+        try:
+            lease = client.acquire_lease()
+        except Exception as e:
+            retry_count += 1
+            lease = None
+            logger.warning(
+                f"Failed to acquire lease, error detail: {str(e)}, retrying in 5 seconds..."
+            )
+            await asyncio.sleep(5)
+    if lease is None:
+        logger.error(f"Failed to acquire lease after 50 retries, error....")
+        raise HTTPException(
+            status_code=500, detail="Failed to acquire lease after 50 retries"
+        )
+    return lease
 
 
 def extract_token_value(authorization: str, header_name: str) -> str:

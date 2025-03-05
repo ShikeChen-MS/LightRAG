@@ -189,7 +189,7 @@ async def _merge_nodes_then_upsert(
     nodes_data: list[dict],
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
-    ai_access_token: str
+    ai_access_token: str,
 ):
     """Get existing nodes from knowledge graph use name,if exists, merge data, else create, then upsert."""
     already_entity_types = []
@@ -239,7 +239,7 @@ async def _merge_edges_then_upsert(
     edges_data: list[dict],
     knowledge_graph_inst: BaseGraphStorage,
     global_config: dict,
-    ai_access_token: str
+    ai_access_token: str,
 ):
     already_weights = []
     already_source_ids = []
@@ -331,6 +331,7 @@ async def _merge_edges_then_upsert(
 
     return edge_data
 
+
 # Mark
 async def extract_entities(
     ai_access_token: str,
@@ -390,7 +391,8 @@ async def extract_entities(
     total_chunks = len(ordered_chunks)
 
     async def _user_llm_func_with_cache(
-        input_text: str, history_messages: list[dict[str, str]] = None
+        input_text: str,
+        history_messages: list[dict[str, str]] = None
     ) -> str:
         if enable_llm_cache_for_entity_extract and llm_response_cache:
             if history_messages:
@@ -402,6 +404,7 @@ async def extract_entities(
             arg_hash = compute_args_hash(_prompt)
             cached_return, _1, _2, _3 = await handle_cache(
                 llm_response_cache,
+                ai_access_token,
                 arg_hash,
                 _prompt,
                 "default",
@@ -415,12 +418,10 @@ async def extract_entities(
             statistic_data["llm_call"] += 1
             if history_messages:
                 res: str = await use_llm_func(
-                    ai_access_token,
-                    input_text,
-                    history_messages=history_messages
+                    ai_access_token, input_text, history_messages=history_messages
                 )
             else:
-                res: str = await use_llm_func(ai_access_token,input_text)
+                res: str = await use_llm_func(ai_access_token, input_text)
             await save_to_cache(
                 llm_response_cache,
                 CacheData(
@@ -433,7 +434,9 @@ async def extract_entities(
             return res
 
         if history_messages:
-            return await use_llm_func(ai_access_token, input_text, history_messages=history_messages)
+            return await use_llm_func(
+                ai_access_token, input_text, history_messages=history_messages
+            )
         else:
             return await use_llm_func(ai_access_token, input_text)
 
@@ -521,14 +524,18 @@ async def extract_entities(
 
     all_entities_data = await asyncio.gather(
         *[
-            _merge_nodes_then_upsert(k, v, knowledge_graph_inst, global_config, ai_access_token)
+            _merge_nodes_then_upsert(
+                k, v, knowledge_graph_inst, global_config, ai_access_token
+            )
             for k, v in maybe_nodes.items()
         ]
     )
 
     all_relationships_data = await asyncio.gather(
         *[
-            _merge_edges_then_upsert(k[0], k[1], v, knowledge_graph_inst, global_config, ai_access_token)
+            _merge_edges_then_upsert(
+                k[0], k[1], v, knowledge_graph_inst, global_config, ai_access_token
+            )
             for k, v in maybe_edges.items()
         ]
     )
@@ -580,6 +587,7 @@ async def extract_entities(
 
 async def kg_query(
     query: str,
+    ai_access_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -593,14 +601,19 @@ async def kg_query(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash(query_param.mode, query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, query, query_param.mode, cache_type="query"
+        hashing_kv,
+        ai_access_token,
+        args_hash,
+        query,
+        query_param.mode,
+        cache_type="query"
     )
     if cached_response is not None:
         return cached_response
 
     # Extract keywords using extract_keywords_only function which already supports conversation history
     hl_keywords, ll_keywords = await extract_keywords_only(
-        query, query_param, global_config, hashing_kv
+        query, ai_access_token, query_param, global_config, hashing_kv
     )
 
     logger.debug(f"High-level keywords: {hl_keywords}")
@@ -628,6 +641,7 @@ async def kg_query(
 
     # Build context
     context = await _build_query_context(
+        ai_access_token,
         ll_keywords_str,
         hl_keywords_str,
         knowledge_graph_inst,
@@ -663,6 +677,7 @@ async def kg_query(
     logger.debug(f"[kg_query]Prompt Tokens: {len_of_prompts}")
 
     response = await use_model_func(
+        ai_access_token,
         query,
         system_prompt=sys_prompt,
         stream=query_param.stream,
@@ -697,6 +712,7 @@ async def kg_query(
 
 async def extract_keywords_only(
     text: str,
+    ai_access_token: str,
     param: QueryParam,
     global_config: dict[str, str],
     hashing_kv: BaseKVStorage | None = None,
@@ -710,7 +726,12 @@ async def extract_keywords_only(
     # 1. Handle cache if needed - add cache type for keywords
     args_hash = compute_args_hash(param.mode, text, cache_type="keywords")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, text, param.mode, cache_type="keywords"
+        hashing_kv,
+        ai_access_token,
+        args_hash,
+        text,
+        param.mode,
+        cache_type="keywords"
     )
     if cached_response is not None:
         try:
@@ -753,7 +774,7 @@ async def extract_keywords_only(
 
     # 5. Call the LLM for keyword extraction
     use_model_func = global_config["llm_model_func"]
-    result = await use_model_func(kw_prompt, keyword_extraction=True)
+    result = await use_model_func(ai_access_token, kw_prompt, keyword_extraction=True)
 
     # 6. Parse out JSON from the LLM response
     match = re.search(r"\{.*\}", result, re.DOTALL)
@@ -793,6 +814,7 @@ async def extract_keywords_only(
 
 async def mix_kg_vector_query(
     query: str,
+    ai_access_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -815,7 +837,12 @@ async def mix_kg_vector_query(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash("mix", query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, query, "mix", cache_type="query"
+        hashing_kv,
+        ai_access_token,
+        args_hash,
+        query,
+        "mix",
+        cache_type="query"
     )
     if cached_response is not None:
         return cached_response
@@ -832,7 +859,7 @@ async def mix_kg_vector_query(
         try:
             # Extract keywords using extract_keywords_only function which already supports conversation history
             hl_keywords, ll_keywords = await extract_keywords_only(
-                query, query_param, global_config, hashing_kv
+                query, ai_access_token, query_param, global_config, hashing_kv
             )
 
             if not hl_keywords and not ll_keywords:
@@ -855,6 +882,7 @@ async def mix_kg_vector_query(
 
             # Build knowledge graph context
             context = await _build_query_context(
+                ai_access_token,
                 ll_keywords_str,
                 hl_keywords_str,
                 knowledge_graph_inst,
@@ -879,7 +907,7 @@ async def mix_kg_vector_query(
         try:
             # Reduce top_k for vector search in hybrid mode since we have structured information from KG
             mix_topk = min(10, query_param.top_k)
-            results = await chunks_vdb.query(augmented_query, top_k=mix_topk)
+            results = await chunks_vdb.query(ai_access_token,augmented_query, top_k=mix_topk)
             if not results:
                 return None
 
@@ -964,6 +992,7 @@ async def mix_kg_vector_query(
 
     # 6. Generate response
     response = await use_model_func(
+        ai_access_token,
         query,
         system_prompt=sys_prompt,
         stream=query_param.stream,
@@ -1000,6 +1029,7 @@ async def mix_kg_vector_query(
 
 
 async def _build_query_context(
+    ai_access_token: str,
     ll_keywords: str,
     hl_keywords: str,
     knowledge_graph_inst: BaseGraphStorage,
@@ -1011,6 +1041,7 @@ async def _build_query_context(
     if query_param.mode == "local":
         entities_context, relations_context, text_units_context = await _get_node_data(
             ll_keywords,
+            ai_access_token,
             knowledge_graph_inst,
             entities_vdb,
             text_chunks_db,
@@ -1019,6 +1050,7 @@ async def _build_query_context(
     elif query_param.mode == "global":
         entities_context, relations_context, text_units_context = await _get_edge_data(
             hl_keywords,
+            ai_access_token,
             knowledge_graph_inst,
             relationships_vdb,
             text_chunks_db,
@@ -1028,6 +1060,7 @@ async def _build_query_context(
         ll_data, hl_data = await asyncio.gather(
             _get_node_data(
                 ll_keywords,
+                ai_access_token,
                 knowledge_graph_inst,
                 entities_vdb,
                 text_chunks_db,
@@ -1035,6 +1068,7 @@ async def _build_query_context(
             ),
             _get_edge_data(
                 hl_keywords,
+                ai_access_token,
                 knowledge_graph_inst,
                 relationships_vdb,
                 text_chunks_db,
@@ -1082,6 +1116,7 @@ async def _build_query_context(
 
 async def _get_node_data(
     query: str,
+    ai_access_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage,
@@ -1091,7 +1126,7 @@ async def _get_node_data(
     logger.info(
         f"Query nodes: {query}, top_k: {query_param.top_k}, cosine: {entities_vdb.cosine_better_than_threshold}"
     )
-    results = await entities_vdb.query(query, top_k=query_param.top_k)
+    results = await entities_vdb.query( ai_access_token, query, top_k=query_param.top_k)
     if not len(results):
         return "", "", ""
     # get entity information
@@ -1321,6 +1356,7 @@ async def _find_most_related_edges_from_entities(
 
 async def _get_edge_data(
     keywords,
+    ai_access_token,
     knowledge_graph_inst: BaseGraphStorage,
     relationships_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage,
@@ -1329,7 +1365,7 @@ async def _get_edge_data(
     logger.info(
         f"Query edges: {keywords}, top_k: {query_param.top_k}, cosine: {relationships_vdb.cosine_better_than_threshold}"
     )
-    results = await relationships_vdb.query(keywords, top_k=query_param.top_k)
+    results = await relationships_vdb.query(ai_access_token, keywords, top_k=query_param.top_k)
 
     if not len(results):
         return "", "", ""
@@ -1557,6 +1593,7 @@ def combine_contexts(entities, relationships, sources):
 
 async def naive_query(
     query: str,
+    ai_access_token: str,
     chunks_vdb: BaseVectorStorage,
     text_chunks_db: BaseKVStorage,
     query_param: QueryParam,
@@ -1568,7 +1605,12 @@ async def naive_query(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash(query_param.mode, query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, query, query_param.mode, cache_type="query"
+        hashing_kv,
+        ai_access_token,
+        args_hash,
+        query,
+        query_param.mode,
+        cache_type="query"
     )
     if cached_response is not None:
         return cached_response
@@ -1629,6 +1671,7 @@ async def naive_query(
     logger.debug(f"[naive_query]Prompt Tokens: {len_of_prompts}")
 
     response = await use_model_func(
+        ai_access_token,
         query,
         system_prompt=sys_prompt,
     )
@@ -1665,6 +1708,7 @@ async def naive_query(
 
 async def kg_query_with_keywords(
     query: str,
+    ai_access_token: str,
     knowledge_graph_inst: BaseGraphStorage,
     entities_vdb: BaseVectorStorage,
     relationships_vdb: BaseVectorStorage,
@@ -1685,7 +1729,12 @@ async def kg_query_with_keywords(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash(query_param.mode, query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv, args_hash, query, query_param.mode, cache_type="query"
+        hashing_kv,
+        ai_access_token,
+        args_hash,
+        query,
+        query_param.mode,
+        cache_type="query"
     )
     if cached_response is not None:
         return cached_response
@@ -1731,6 +1780,7 @@ async def kg_query_with_keywords(
     # 3) BUILD CONTEXT
     # ---------------------------
     context = await _build_query_context(
+        ai_access_token,
         ll_keywords_str,
         hl_keywords_str,
         knowledge_graph_inst,
@@ -1771,6 +1821,7 @@ async def kg_query_with_keywords(
     logger.debug(f"[kg_query_with_keywords]Prompt Tokens: {len_of_prompts}")
 
     response = await use_model_func(
+        ai_access_token,
         query,
         system_prompt=sys_prompt,
         stream=query_param.stream,

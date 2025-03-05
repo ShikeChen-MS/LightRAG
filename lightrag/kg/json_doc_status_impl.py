@@ -156,11 +156,11 @@ class JsonDocStatusStorage(DocStatusStorage):
                 blob_lease.release()
 
     async def upsert(
-            self,
-            data: dict[str, dict[str, Any]],
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
+        self,
+        data: dict[str, dict[str, Any]],
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> None:
         logger.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
@@ -168,9 +168,7 @@ class JsonDocStatusStorage(DocStatusStorage):
 
         self._data.update(data)
         await self.index_done_callback(
-            storage_account_url,
-            storage_container_name,
-            access_token
+            storage_account_url, storage_container_name, access_token
         )
 
     async def get_by_id(self, id: str) -> Union[dict[str, Any], None]:

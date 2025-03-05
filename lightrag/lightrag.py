@@ -3,11 +3,9 @@ import asyncio
 import configparser
 import os
 import threading
-import traceback
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-
 from .document_manager import DocumentManager
 from .az_token_credential import LightRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final, Dict
@@ -391,6 +389,9 @@ class LightRAG:
 
     def insert(
         self,
+        storage_account_url: str,
+        storage_container_name: str,
+        storage_access_token: LightRagTokenCredential,
         input: str | list[str],
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
@@ -407,7 +408,15 @@ class LightRAG:
         """
         loop = always_get_an_event_loop()
         loop.run_until_complete(
-            self.ainsert(input, split_by_character, split_by_character_only, ids)
+            self.ainsert(
+                storage_account_url,
+                storage_container_name,
+                storage_access_token,
+                input,
+                split_by_character,
+                split_by_character_only,
+                ids,
+            )
         )
 
     async def ainsert(
@@ -421,20 +430,9 @@ class LightRAG:
         ids: str | list[str] | None = None,
     ) -> None:
         """Async Insert documents with checkpoint support
-
-        Args:
-            input: Single document string or list of document strings
-            split_by_character: if split_by_character is not None, split the string by character, if chunk longer than
-            split_by_character_only: if split_by_character_only is True, split the string by character only, when
-            split_by_character is None, this parameter is ignored.
-            ids: list of unique document IDs, if not provided, MD5 hash IDs will be generated
         """
         await self.apipeline_enqueue_documents(
-            storage_account_url,
-            storage_container_name,
-            access_token,
-            input,
-            ids
+            storage_account_url, storage_container_name, access_token, input, ids
         )
         await self.apipeline_process_enqueue_documents(
             storage_account_url,
@@ -537,7 +535,7 @@ class LightRAG:
         storage_container_name: str,
         access_token: LightRagTokenCredential,
         input: str | list[str],
-        ids: list[str] | None = None
+        ids: list[str] | None = None,
     ) -> None:
         """
         Pipeline for Processing Documents
@@ -700,10 +698,10 @@ class LightRAG:
                             },
                             storage_account_url,
                             storage_container_name,
-                            access_token
+                            access_token,
                         ),
                         self.chunks_vdb.upsert(chunks, ai_access_token),
-                        self._process_entity_relation_graph(ai_access_token,chunks),
+                        self._process_entity_relation_graph(ai_access_token, chunks),
                         self.full_docs.upsert(
                             {doc_id: {"content": status_doc.content}}
                         ),
@@ -725,7 +723,7 @@ class LightRAG:
                             },
                             storage_account_url,
                             storage_container_name,
-                            access_token
+                            access_token,
                         )
                     except Exception as e:
                         logger.error(f"Failed to process document {doc_id}: {str(e)}")
@@ -743,7 +741,7 @@ class LightRAG:
                             },
                             storage_account_url,
                             storage_container_name,
-                            access_token
+                            access_token,
                         )
                         continue
                 logger.info(f"Completed batch {batch_idx + 1} of {len(docs_batches)}.")
@@ -756,9 +754,8 @@ class LightRAG:
         )
 
     async def _process_entity_relation_graph(
-            self,
-            ai_access_token: str,
-            chunk: dict[str, Any]) -> None:
+        self, ai_access_token: str, chunk: dict[str, Any]
+    ) -> None:
         try:
             await extract_entities(
                 ai_access_token,
@@ -799,6 +796,7 @@ class LightRAG:
 
     def insert_custom_kg(
         self,
+        ai_access_token: str,
         storage_account_url: str,
         storage_container_name: str,
         access_token: LightRagTokenCredential,
@@ -807,12 +805,17 @@ class LightRAG:
         loop = always_get_an_event_loop()
         loop.run_until_complete(
             self.ainsert_custom_kg(
-                storage_account_url, storage_container_name, access_token, custom_kg
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
+                access_token,
+                custom_kg,
             )
         )
 
     async def ainsert_custom_kg(
         self,
+        ai_access_token: str,
         storage_account_url: str,
         storage_container_name: str,
         access_token: LightRagTokenCredential,
@@ -851,7 +854,7 @@ class LightRAG:
                 update_storage = True
 
             if all_chunks_data:
-                await self.chunks_vdb.upsert(all_chunks_data)
+                await self.chunks_vdb.upsert(all_chunks_data, ai_access_token)
             if all_chunks_data:
                 await self.text_chunks.upsert(all_chunks_data)
 
@@ -945,7 +948,7 @@ class LightRAG:
                 }
                 for dp in all_entities_data
             }
-            await self.entities_vdb.upsert(data_for_vdb)
+            await self.entities_vdb.upsert(data_for_vdb, ai_access_token)
 
             # Insert relationships into vector storage if needed
             data_for_vdb = {
@@ -959,7 +962,7 @@ class LightRAG:
                 }
                 for dp in all_relationships_data
             }
-            await self.relationships_vdb.upsert(data_for_vdb)
+            await self.relationships_vdb.upsert(data_for_vdb, ai_access_token)
 
         finally:
             if update_storage:
@@ -975,14 +978,6 @@ class LightRAG:
     ) -> str | Iterator[str]:
         """
         Perform a sync query.
-
-        Args:
-            query (str): The query to be executed.
-            param (QueryParam): Configuration parameters for query execution.
-            prompt (Optional[str]): Custom prompts for fine-tuned control over the system's behavior. Defaults to None, which uses PROMPTS["rag_response"].
-
-        Returns:
-            str: The result of the query execution.
         """
         loop = always_get_an_event_loop()
 
@@ -991,23 +986,20 @@ class LightRAG:
     async def aquery(
         self,
         query: str,
+        ai_access_token: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        storage_access_token: LightRagTokenCredential,
         param: QueryParam = QueryParam(),
         system_prompt: str | None = None,
     ) -> str | AsyncIterator[str]:
         """
         Perform a async query.
-
-        Args:
-            query (str): The query to be executed.
-            param (QueryParam): Configuration parameters for query execution.
-            prompt (Optional[str]): Custom prompts for fine-tuned control over the system's behavior. Defaults to None, which uses PROMPTS["rag_response"].
-
-        Returns:
-            str: The result of the query execution.
         """
         if param.mode in ["local", "global", "hybrid"]:
             response = await kg_query(
                 query,
+                ai_access_token,
                 self.chunk_entity_relation_graph,
                 self.entities_vdb,
                 self.relationships_vdb,
@@ -1031,6 +1023,7 @@ class LightRAG:
         elif param.mode == "naive":
             response = await naive_query(
                 query,
+                ai_access_token,
                 self.chunks_vdb,
                 self.text_chunks,
                 param,
@@ -1052,6 +1045,7 @@ class LightRAG:
         elif param.mode == "mix":
             response = await mix_kg_vector_query(
                 query,
+                ai_access_token,
                 self.chunk_entity_relation_graph,
                 self.entities_vdb,
                 self.relationships_vdb,
@@ -1075,11 +1069,20 @@ class LightRAG:
             )
         else:
             raise ValueError(f"Unknown mode {param.mode}")
-        await self._query_done()
+        await self._query_done(
+            storage_account_url, storage_container_name, storage_access_token
+        )
         return response
 
     def query_with_separate_keyword_extraction(
-        self, query: str, prompt: str, param: QueryParam = QueryParam()
+        self,
+        ai_access_token: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        storage_access_token: LightRagTokenCredential,
+        query: str,
+        prompt: str,
+        param: QueryParam = QueryParam(),
     ):
         """
         1. Extract keywords from the 'query' using new function in operate.py.
@@ -1087,11 +1090,26 @@ class LightRAG:
         """
         loop = always_get_an_event_loop()
         return loop.run_until_complete(
-            self.aquery_with_separate_keyword_extraction(query, prompt, param)
+            self.aquery_with_separate_keyword_extraction(
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
+                storage_access_token,
+                query,
+                prompt,
+                param
+            )
         )
 
     async def aquery_with_separate_keyword_extraction(
-        self, query: str, prompt: str, param: QueryParam = QueryParam()
+        self,
+        ai_access_token: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        storage_access_token: LightRagTokenCredential,
+        query: str,
+        prompt: str,
+        param: QueryParam = QueryParam(),
     ) -> str | AsyncIterator[str]:
         """
         1. Calls extract_keywords_only to get HL/LL keywords from 'query'.
@@ -1102,6 +1120,7 @@ class LightRAG:
         # ---------------------
         hl_keywords, ll_keywords = await extract_keywords_only(
             text=query,
+            ai_access_token=ai_access_token,
             param=param,
             global_config=self.__dict__,
             hashing_kv=self.llm_response_cache
@@ -1151,6 +1170,7 @@ class LightRAG:
         elif param.mode == "naive":
             response = await naive_query(
                 formatted_question,
+                ai_access_token,
                 self.chunks_vdb,
                 self.text_chunks,
                 param,
@@ -1171,6 +1191,7 @@ class LightRAG:
         elif param.mode == "mix":
             response = await mix_kg_vector_query(
                 formatted_question,
+                ai_access_token,
                 self.chunk_entity_relation_graph,
                 self.entities_vdb,
                 self.relationships_vdb,
@@ -1194,11 +1215,20 @@ class LightRAG:
         else:
             raise ValueError(f"Unknown mode {param.mode}")
 
-        await self._query_done()
+        await self._query_done(
+            storage_account_url, storage_container_name, storage_access_token
+        )
         return response
 
-    async def _query_done(self):
-        await self.llm_response_cache.index_done_callback()
+    async def _query_done(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential,
+    ):
+        await self.llm_response_cache.index_done_callback(
+            storage_account_url, storage_container_name, access_token
+        )
 
     def delete_by_entity(self, entity_name: str) -> None:
         loop = always_get_an_event_loop()
