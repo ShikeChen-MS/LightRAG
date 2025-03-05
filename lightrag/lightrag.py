@@ -729,8 +729,6 @@ class LightRAG:
                         )
                     except Exception as e:
                         logger.error(f"Failed to process document {doc_id}: {str(e)}")
-                        #TODO: remove
-                        traceback.print_exc()
                         await self.doc_status.upsert(
                             {
                                 doc_id: {
