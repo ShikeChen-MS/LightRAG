@@ -350,6 +350,23 @@ async def pipeline_index_texts(
         ai_access_token, storage_account_url, storage_container_name, access_token
     )
 
+async def empty_light_rag_databases(
+        rag: LightRAG,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+):
+    blob_client = BlobServiceClient(
+        account_url=storage_account_url, credential=access_token
+    )
+    container_client = blob_client.get_container_client(storage_container_name)
+    container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+    blobs_list = container_client.list_blobs(name_starts_with=rag.working_dir)
+    for blob in blobs_list:
+        blob_client = container_client.get_blob_client(blob)
+        blob_lease = await try_get_container_lease(blob_client)
+        blob_client.delete_blob(lease=blob_lease)
+    await rag.initialize_storages(access_token)
 
 async def upload_file(
     storage_account_url: str,
@@ -801,10 +818,18 @@ def create_document_routes(
             rag.text_chunks = []
             rag.entities_vdb = None
             rag.relationships_vdb = None
+            await empty_light_rag_databases(
+                rag,
+                storage_account_url,
+                storage_container_name,
+                get_lightrag_token_credential(
+                    storage_access_token, storage_token_expiry
+                ),
+            )
             response = JSONResponse(
                 content={
                     "status": "success",
-                    "message": "Text successfully received. Processing will continue in background.",
+                    "message": "All databases has been deleted in remote storage, new empty databases has been created.",
                 },
                 headers={"X-Affinity-Token": rag.affinity_token},
             )
