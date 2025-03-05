@@ -236,24 +236,15 @@ def create_query_routes(
     ):
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
-
-        Args:
-            request (QueryRequest): The request object containing the query parameters.
-            optional_api_key (Optional[str], optional): An optional API key for authentication. Defaults to None.
-
-        Returns:
-            StreamingResponse: A streaming response containing the RAG query results.
         """
-        if not ai_access_token or not storage_access_token:
-            raise HTTPException(
-                status_code=401,
-                detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
-            )
-        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(
-            storage_access_token, "Storage_Access_Token"
-        )
         try:
+            ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+            storage_access_token = extract_token_value(
+                storage_access_token, "Storage_Access_Token"
+            )
+            lightrag_token = get_lightrag_token_credential(
+                storage_access_token, storage_token_expiry
+            )
             param = request.to_query_params(True)
             rag = initialize_rag_with_header(
                 rag_instance_manager,
@@ -269,8 +260,14 @@ def create_query_routes(
                     storage_access_token, storage_token_expiry
                 ),
             )
-            response = await rag.aquery(request.query, param=param)
-
+            response = await rag.aquery(
+                request.query,
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
+                lightrag_token,
+                param=param
+            )
             from fastapi.responses import StreamingResponse
 
             async def stream_generator():

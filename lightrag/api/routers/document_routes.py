@@ -863,7 +863,6 @@ def create_document_routes(
             results: List[Dict[str, DocProcessingStatus]] = await asyncio.gather(*tasks)
 
             response = DocsStatusesResponse()
-
             for idx, result in enumerate(results):
                 status = statuses[idx]
                 for doc_id, doc_status in result.items():
@@ -886,10 +885,7 @@ def create_document_routes(
                             metadata=doc_status.metadata,
                         )
                     )
-            res = JSONResponse(
-                content=response, headers={"X-Affinity-Token": rag.affinity_token}
-            )
-            return res
+            return JSONResponse(content=response.model_dump(), headers={"X-Affinity-Token": rag.affinity_token})
         except Exception as e:
             logging.error(f"Error GET /documents: {str(e)}")
             logging.error(traceback.format_exc())

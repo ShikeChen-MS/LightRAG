@@ -1,9 +1,11 @@
 from __future__ import annotations
+
+import json
 from abc import ABC, abstractmethod
 from enum import Enum
 import os
 from dotenv import load_dotenv
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import (
     Any,
     Literal,
@@ -263,6 +265,9 @@ class DocProcessingStatus:
     metadata: dict[str, Any] = field(default_factory=dict)
     """Additional metadata"""
 
+    def to_json(self) -> str:
+        """Convert the DocProcessingStatus instance to JSON"""
+        return json.dumps(asdict(self), default=str)
 
 @dataclass
 class DocStatusStorage(StorageNameSpace, ABC):
