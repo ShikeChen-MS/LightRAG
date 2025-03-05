@@ -1615,7 +1615,7 @@ async def naive_query(
     if cached_response is not None:
         return cached_response
 
-    results = await chunks_vdb.query(query, top_k=query_param.top_k)
+    results = await chunks_vdb.query(ai_access_token, query, top_k=query_param.top_k)
     if not len(results):
         return PROMPTS["fail_response"]
 
