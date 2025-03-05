@@ -4,7 +4,6 @@ This module contains all query-related routes for the LightRAG API.
 
 import json
 import logging
-from ..base_request import BaseRequest
 from typing import Any, Dict, List, Literal, Optional
 from fastapi.responses import JSONResponse
 from fastapi import (
@@ -16,7 +15,7 @@ from fastapi import (
 from ...base import QueryParam
 from ..utils_api import (
     get_api_key_dependency,
-    initialize_rag,
+    initialize_rag_with_header,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
     extract_token_value,
@@ -159,8 +158,10 @@ def create_query_routes(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
     )
     async def query_text(
-        base_request: BaseRequest,
         request: QueryRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -190,16 +191,18 @@ def create_query_routes(
         )
         try:
             param = request.to_query_params(False)
-            rag: LightRAG = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
             response = await rag.aquery(request.query, param=param)
@@ -224,8 +227,10 @@ def create_query_routes(
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
     async def query_text_stream(
-        base_request: BaseRequest,
         request: QueryRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -251,16 +256,18 @@ def create_query_routes(
         )
         try:
             param = request.to_query_params(True)
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
             response = await rag.aquery(request.query, param=param)

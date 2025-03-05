@@ -3,6 +3,7 @@ import asyncio
 import configparser
 import os
 import threading
+import traceback
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import partial
@@ -411,6 +412,9 @@ class LightRAG:
 
     async def ainsert(
         self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
         input: str | list[str],
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
@@ -425,24 +429,53 @@ class LightRAG:
             split_by_character is None, this parameter is ignored.
             ids: list of unique document IDs, if not provided, MD5 hash IDs will be generated
         """
-        await self.apipeline_enqueue_documents(input, ids)
+        await self.apipeline_enqueue_documents(
+            storage_account_url,
+            storage_container_name,
+            access_token,
+            input,
+            ids
+        )
         await self.apipeline_process_enqueue_documents(
-            split_by_character, split_by_character_only
+            storage_account_url,
+            storage_container_name,
+            access_token,
+            split_by_character,
+            split_by_character_only,
         )
 
     def insert_custom_chunks(
         self,
         full_text: str,
         text_chunks: list[str],
+        ai_access_token: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
         doc_id: str | list[str] | None = None,
     ) -> None:
         loop = always_get_an_event_loop()
         loop.run_until_complete(
-            self.ainsert_custom_chunks(full_text, text_chunks, doc_id)
+            self.ainsert_custom_chunks(
+                full_text,
+                text_chunks,
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
+                access_token,
+                doc_id,
+            )
         )
 
     async def ainsert_custom_chunks(
-        self, full_text: str, text_chunks: list[str], doc_id: str | None = None
+        self,
+        full_text: str,
+        text_chunks: list[str],
+        ai_access_token: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        doc_id: str | None = None,
     ) -> None:
         update_storage = False
         try:
@@ -485,8 +518,8 @@ class LightRAG:
                 return
 
             tasks = [
-                self.chunks_vdb.upsert(inserting_chunks),
-                self._process_entity_relation_graph(inserting_chunks),
+                self.chunks_vdb.upsert(inserting_chunks, ai_access_token),
+                self._process_entity_relation_graph(ai_access_token, inserting_chunks),
                 self.full_docs.upsert(new_docs),
                 self.text_chunks.upsert(inserting_chunks),
             ]
@@ -494,10 +527,17 @@ class LightRAG:
 
         finally:
             if update_storage:
-                await self._insert_done()
+                await self._insert_done(
+                    storage_account_url, storage_container_name, access_token
+                )
 
     async def apipeline_enqueue_documents(
-        self, input: str | list[str], ids: list[str] | None = None
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        input: str | list[str],
+        ids: list[str] | None = None
     ) -> None:
         """
         Pipeline for Processing Documents
@@ -565,11 +605,20 @@ class LightRAG:
             return
 
         # 5. Store status document
-        await self.doc_status.upsert(new_docs)
+        await self.doc_status.upsert(
+            new_docs,
+            storage_account_url,
+            storage_container_name,
+            access_token,
+        )
         logger.info(f"Stored {len(new_docs)} new unique documents")
 
     async def apipeline_process_enqueue_documents(
         self,
+        ai_access_token: str,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
     ) -> None:
@@ -648,10 +697,13 @@ class LightRAG:
                                     "content_length": status_doc.content_length,
                                     "created_at": status_doc.created_at,
                                 }
-                            }
+                            },
+                            storage_account_url,
+                            storage_container_name,
+                            access_token
                         ),
-                        self.chunks_vdb.upsert(chunks),
-                        self._process_entity_relation_graph(chunks),
+                        self.chunks_vdb.upsert(chunks, ai_access_token),
+                        self._process_entity_relation_graph(ai_access_token,chunks),
                         self.full_docs.upsert(
                             {doc_id: {"content": status_doc.content}}
                         ),
@@ -670,10 +722,15 @@ class LightRAG:
                                     "created_at": status_doc.created_at,
                                     "updated_at": datetime.now().isoformat(),
                                 }
-                            }
+                            },
+                            storage_account_url,
+                            storage_container_name,
+                            access_token
                         )
                     except Exception as e:
                         logger.error(f"Failed to process document {doc_id}: {str(e)}")
+                        #TODO: remove
+                        traceback.print_exc()
                         await self.doc_status.upsert(
                             {
                                 doc_id: {
@@ -685,7 +742,10 @@ class LightRAG:
                                     "created_at": status_doc.created_at,
                                     "updated_at": datetime.now().isoformat(),
                                 }
-                            }
+                            },
+                            storage_account_url,
+                            storage_container_name,
+                            access_token
                         )
                         continue
                 logger.info(f"Completed batch {batch_idx + 1} of {len(docs_batches)}.")
@@ -693,11 +753,17 @@ class LightRAG:
             batches.append(batch(batch_idx, docs_batch, len(docs_batches)))
 
         await asyncio.gather(*batches)
-        await self._insert_done()
+        await self._insert_done(
+            storage_account_url, storage_container_name, access_token
+        )
 
-    async def _process_entity_relation_graph(self, chunk: dict[str, Any]) -> None:
+    async def _process_entity_relation_graph(
+            self,
+            ai_access_token: str,
+            chunk: dict[str, Any]) -> None:
         try:
             await extract_entities(
+                ai_access_token,
                 chunk,
                 knowledge_graph_inst=self.chunk_entity_relation_graph,
                 entity_vdb=self.entities_vdb,
@@ -709,9 +775,16 @@ class LightRAG:
             logger.error("Failed to extract entities and relationships")
             raise e
 
-    async def _insert_done(self) -> None:
+    async def _insert_done(
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+    ) -> None:
         tasks = [
-            cast(StorageNameSpace, storage_inst).index_done_callback()
+            cast(StorageNameSpace, storage_inst).index_done_callback(
+                storage_account_url, storage_container_name, access_token
+            )
             for storage_inst in [  # type: ignore
                 self.full_docs,
                 self.text_chunks,
@@ -726,11 +799,27 @@ class LightRAG:
         await asyncio.gather(*tasks)
         logger.info("All Insert done")
 
-    def insert_custom_kg(self, custom_kg: dict[str, Any]) -> None:
+    def insert_custom_kg(
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        custom_kg: dict[str, Any],
+    ) -> None:
         loop = always_get_an_event_loop()
-        loop.run_until_complete(self.ainsert_custom_kg(custom_kg))
+        loop.run_until_complete(
+            self.ainsert_custom_kg(
+                storage_account_url, storage_container_name, access_token, custom_kg
+            )
+        )
 
-    async def ainsert_custom_kg(self, custom_kg: dict[str, Any]) -> None:
+    async def ainsert_custom_kg(
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        custom_kg: dict[str, Any],
+    ) -> None:
         update_storage = False
         try:
             # Insert chunks into vector storage
@@ -876,7 +965,9 @@ class LightRAG:
 
         finally:
             if update_storage:
-                await self._insert_done()
+                await self._insert_done(
+                    storage_account_url, storage_container_name, access_token
+                )
 
     def query(
         self,
@@ -1175,7 +1266,13 @@ class LightRAG:
         """
         return await self.doc_status.get_docs_by_status(status)
 
-    async def adelete_by_doc_id(self, doc_id: str) -> None:
+    async def adelete_by_doc_id(
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        doc_id: str,
+    ) -> None:
         """Delete a document and all its related data
 
         Args:
@@ -1315,7 +1412,9 @@ class LightRAG:
             await self.doc_status.delete([doc_id])
 
             # 7. Ensure all indexes are updated
-            await self._insert_done()
+            await self._insert_done(
+                storage_account_url, storage_container_name, access_token
+            )
 
             logger.info(
                 f"Successfully deleted document {doc_id} and related data. "

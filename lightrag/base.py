@@ -127,7 +127,11 @@ class BaseVectorStorage(StorageNameSpace, ABC):
         """Query the vector storage and retrieve top_k results."""
 
     @abstractmethod
-    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
+    async def upsert(
+            self,
+            data: dict[str, dict[str, Any]],
+            ai_access_token: str
+    ) -> None:
         """Insert or update vectors in the storage."""
 
     @abstractmethod
@@ -156,7 +160,10 @@ class BaseKVStorage(StorageNameSpace, ABC):
         """Return un-exist keys"""
 
     @abstractmethod
-    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
+    async def upsert(
+            self,
+            data: dict[str, dict[str, Any]]
+    ) -> None:
         """Upsert data"""
 
 
@@ -259,8 +266,19 @@ class DocProcessingStatus:
 
 
 @dataclass
-class DocStatusStorage(BaseKVStorage, ABC):
+class DocStatusStorage(StorageNameSpace, ABC):
     """Base class for document status storage"""
+    @abstractmethod
+    async def get_by_id(self, id: str) -> dict[str, Any] | None:
+        """Get value by id"""
+
+    @abstractmethod
+    async def get_by_ids(self, ids: list[str]) -> list[dict[str, Any]]:
+        """Get values by ids"""
+
+    @abstractmethod
+    async def filter_keys(self, keys: set[str]) -> set[str]:
+        """Return un-exist keys"""
 
     @abstractmethod
     async def get_status_counts(self) -> dict[str, int]:
@@ -271,6 +289,16 @@ class DocStatusStorage(BaseKVStorage, ABC):
         self, status: DocStatus
     ) -> dict[str, DocProcessingStatus]:
         """Get all documents with a specific status"""
+
+    @abstractmethod
+    async def upsert(
+            self,
+            data: dict[str, dict[str, Any]],
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential,
+    ) -> None:
+        """Upsert data"""
 
 
 class StoragesStatus(str, Enum):

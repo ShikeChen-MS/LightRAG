@@ -17,6 +17,8 @@ class RAGInstanceManager:
 
     # Singleton pattern
     # preserve one instance of RAGInstanceManager under instance variable
+    # following __new__ and __init__ will ensure only one instance is created
+    # any subsequent call to initialize will return the same instance
     def __new__(cls, *args, **kwargs):
         if cls.instance is None:
             # Only when instance is None, we actually create a new instance
@@ -42,8 +44,8 @@ class RAGInstanceManager:
         access_token: LightRagTokenCredential,
     ) -> Any:
         # calculating the hash of storage account url + container name
-        # and take the hash(since SHA256 has fixed length of 64 characters as the id,
-        # this also serves as affinity token;
+        # and take the hash (since SHA256 has fixed out length of 64 characters)
+        # as the id, this also serves as affinity token;
         # given that same storage account url + container name
         # will always point to one LightRAG storage.
         connection_str = storage_account_url
@@ -60,6 +62,9 @@ class RAGInstanceManager:
                 # This function and following embedding_func will
                 # be passed to LightRAG instance to be used for completion and embedding
                 async def azure_openai_model_complete(
+                    # DO NOT MODIFY SEQUENCE OF ARGUMENTS
+                    # this function will be wrapped in partial function callable
+                    # with parameters set in advance, modifying the sequence will break the code
                     access_token,
                     prompt,
                     system_prompt=None,
@@ -86,16 +91,21 @@ class RAGInstanceManager:
                 embedding_func = EmbeddingFunc(
                     embedding_dim=self.args.embedding_dim,
                     max_token_size=self.args.max_embed_tokens,
+                    # DO NOT MODIFY SEQUENCE OF ARGUMENTS
+                    # this function will be wrapped in partial function callable
+                    # with parameters set in advance, modifying the sequence will break the code
                     func=lambda aad_token, texts: azure_openai_embed(
-                        aad_token,
-                        texts,
-                        self.args.embedding_model,
-                        self.args.embedding_binding_host,
-                        self.args.embedding_api_version,
+                        access_token=aad_token,
+                        texts=texts,
+                        model=self.args.embedding_model,
+                        base_url=self.args.embedding_binding_host,
+                        api_version=self.args.embedding_api_version,
                     ),
                 )
-                doc_manager = DocumentManager(f"{self.args.working_dir}/{self.args.input_dir}")
-                self.rag_instances[rag_id] = LightRAG(
+                doc_manager = DocumentManager(
+                    f"{self.args.working_dir}/{self.args.input_dir}"
+                )
+                rag = LightRAG(
                     affinity_token=rag_id,
                     working_dir=self.args.working_dir,
                     scan_progress={
@@ -125,7 +135,7 @@ class RAGInstanceManager:
                     vector_db_storage_cls_kwargs={
                         "cosine_better_than_threshold": self.args.cosine_threshold
                     },
-                    enable_llm_cache_for_entity_extract=False,  # set to True for debuging to reduce llm fee
+                    enable_llm_cache_for_entity_extract=False,  # set to True for debugging to reduce llm fee
                     embedding_cache_config={
                         "enabled": True,
                         "similarity_threshold": 0.95,
@@ -137,16 +147,12 @@ class RAGInstanceManager:
                     max_parallel_insert=self.args.max_parallel_insert,
                     cosine_threshold=self.args.cosine_threshold,
                 )
-                self.rag_instances[rag_id].initialize_status = (
-                    InitializeStatus.INITIALIZING
-                )
-        # The storage initializing is expensive operation (takes time to fetch files from blob)
+                rag.initialize_status = InitializeStatus.INITIALIZING
+        # The storage initializing is an expensive operation (takes time to fetch files from blob)
         # so we delay it after LightRAG instance created. and make it none blocking.
         # In actual API call, we will check storage status before any actual ops on storage.
-        try:
-            await self.rag_instances[rag_id].initialize_storages(access_token)
-        except Exception as e:
-            print(f"Failed to initialize storage for {rag_id}: {e}")
+        await rag.initialize_storages(access_token)
+        self.rag_instances[rag_id] = rag
         return self.rag_instances[rag_id]
 
     async def get_rag_instance_by_affinity_token(self, affinity_token: str) -> LightRAG:

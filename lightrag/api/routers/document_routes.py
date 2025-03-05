@@ -8,10 +8,8 @@ import logging
 import os
 import traceback
 import pipmaster as pm
-from ..base_request import BaseRequest
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient, ContainerClient
 from ..rag_instance_manager import RAGInstanceManager
-from pathlib import Path
 from typing import Dict, List, Optional, Any
 from fastapi import (
     APIRouter,
@@ -29,7 +27,7 @@ from ...az_token_credential import LightRagTokenCredential
 from ...base import DocProcessingStatus, DocStatus, StoragesStatus
 from ..utils_api import (
     get_api_key_dependency,
-    initialize_rag,
+    initialize_rag_with_header,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
     extract_token_value,
@@ -148,7 +146,7 @@ async def pipeline_enqueue_file(
 
     try:
         content = ""
-        ext = rag.document_manager.is_supported_file(file_path)
+        root, ext = os.path.splitext(file_path)
 
         blob_client = BlobServiceClient(
             account_url=storage_account_url, credential=access_token
@@ -262,7 +260,12 @@ async def pipeline_enqueue_file(
 
         # Insert into the RAG queue
         if content:
-            await rag.apipeline_enqueue_documents(content)
+            await rag.apipeline_enqueue_documents(
+                storage_account_url,
+                storage_container_name,
+                access_token,
+                content
+            )
             logging.info(f"Successfully fetched and enqueued file: {file_path}")
             return True
         else:
@@ -277,63 +280,68 @@ async def pipeline_enqueue_file(
 async def pipeline_index_file(
     rag: LightRAG,
     file_path: str,
+    ai_access_token: str,
     storage_account_url: str,
     storage_container_name: str,
     access_token: LightRagTokenCredential,
 ):
-    """Index a file
-
-    Args:
-        rag: LightRAG instance
-        file_path: Path to the saved file
-    """
+    """Index a file"""
     try:
         if await pipeline_enqueue_file(
             rag, file_path, storage_account_url, storage_container_name, access_token
         ):
-            await rag.apipeline_process_enqueue_documents()
+            await rag.apipeline_process_enqueue_documents(
+                ai_access_token, storage_account_url, storage_container_name, access_token
+            )
 
     except Exception as e:
         logging.error(f"Error indexing file {file_path}: {str(e)}")
         logging.error(traceback.format_exc())
 
 
-async def pipeline_index_texts(rag: LightRAG, texts: List[str]):
-    """Index a list of texts
-
-    Args:
-        rag: LightRAG instance
-        texts: The texts to index
-    """
+async def pipeline_index_texts(
+    rag: LightRAG,
+    texts: List[str],
+    storage_account_url: str,
+    storage_container_name: str,
+    access_token: LightRagTokenCredential,
+):
+    """Index a list of texts"""
     if not texts:
         return
-    await rag.apipeline_enqueue_documents(texts)
-    await rag.apipeline_process_enqueue_documents()
+    await rag.apipeline_enqueue_documents(
+        storage_account_url,
+        storage_container_name,
+        access_token,
+        texts
+    )
+    await rag.apipeline_process_enqueue_documents(
+        storage_account_url, storage_container_name, access_token
+    )
 
 
 async def upload_file(
-    input_dir: str,
     storage_account_url: str,
     storage_container_name: str,
     access_token: LightRagTokenCredential,
     rag: LightRAG,
     file: UploadFile = File(...),
 ) -> str:
-    """Save the uploaded file to a temporary location
-
-    Args:
-        file: The uploaded file
-
-    Returns:
-        Path: The path to the saved file
-    """
+    """Save the uploaded file to a temporary location"""
     blob_client = BlobServiceClient(
         account_url=storage_account_url, credential=access_token
     )
     container_client = blob_client.get_container_client(storage_container_name)
     container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
     file_name = f"{rag.document_manager.input_dir}/{file.filename}"
-    lease: BlobLeaseClient = container_client.acquire_lease()
+    lease = None
+    while lease is None:
+        try:
+            lease: BlobLeaseClient = container_client.acquire_lease()
+            break;
+        except Exception as e:
+            logging.error(f"Error acquiring lease: {str(e)}")
+            await asyncio.sleep(5)
     blob_list = container_client.list_blob_names()
     if file_name in blob_list:
         logging.error(f"File {file_name} already exists in storage")
@@ -342,7 +350,7 @@ async def upload_file(
             detail=f"File {file_name} already exists in storage {storage_container_name}",
         )
     else:
-        blob_name = file.filename
+        blob_name = file_name
         blob_client = container_client.get_blob_client(blob_name)
         file_bytes = await file.read()
         blob_client.upload_blob(file_bytes, overwrite=False)
@@ -352,6 +360,7 @@ async def upload_file(
 
 async def run_scanning_process(
     rag: LightRAG,
+    ai_access_token: str,
     storage_account_url: str,
     storage_container_name: str,
     access_token: LightRagTokenCredential,
@@ -373,6 +382,7 @@ async def run_scanning_process(
                 await pipeline_index_file(
                     rag,
                     file_path,
+                    ai_access_token,
                     storage_account_url,
                     storage_container_name,
                     access_token,
@@ -401,8 +411,10 @@ def create_document_routes(
 
     @router.post("/scan", dependencies=[Depends(optional_api_key)])
     async def scan_for_new_documents(
-        base_request: BaseRequest,
         background_tasks: BackgroundTasks,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -422,45 +434,60 @@ def create_document_routes(
                 status_code=401,
                 detail='Missing necessary authentication header: "Azure-AI-Access-Token" or "Storage_Access_Token"',
             )
-        ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
-        storage_access_token = extract_token_value(
-            storage_access_token, "Storage_Access_Token"
-        )
-        rag: LightRAG = initialize_rag(
-            rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
-        )
-        async with rag.progress_lock:
-            if rag.scan_progress["is_scanning"]:
-                return {"status": "already_scanning"}
+        try:
+            ai_access_token = extract_token_value(
+                ai_access_token, "Azure-AI-Access-Token"
+            )
+            storage_access_token = extract_token_value(
+                storage_access_token, "Storage_Access_Token"
+            )
+            rag = initialize_rag_with_header(
+                rag_instance_manager,
+                storage_account_url,
+                storage_container_name,
+                X_Affinity_Token,
+                storage_access_token,
+                storage_token_expiry,
+            )
+            async with rag.progress_lock:
+                if rag.scan_progress["is_scanning"]:
+                    return {"status": "already_scanning"}
 
-            rag.scan_progress["is_scanning"] = True
-            rag.scan_progress["indexed_count"] = 0
-            rag.scan_progress["progress"] = 0
-        await wait_for_storage_initialization(
-            rag,
-            get_lightrag_token_credential(
-                storage_access_token, base_request.storage_token_expiry
-            ),
-        )
-        # Start the scanning process in the background
-        background_tasks.add_task(
-            run_scanning_process,
-            rag,
-            base_request.storage_account_url,
-            base_request.storage_container_name,
-            get_lightrag_token_credential(
-                storage_access_token, base_request.storage_token_expiry
-            ),
-        )
-        response = JSONResponse(
-            content={"status": "scanning_started"},
-            headers={"X-Affinity-Token": rag.affinity_token},
-        )
-        return response
+                rag.scan_progress["is_scanning"] = True
+                rag.scan_progress["indexed_count"] = 0
+                rag.scan_progress["progress"] = 0
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(
+                    storage_access_token, storage_token_expiry
+                ),
+            )
+            # Start the scanning process in the background
+            background_tasks.add_task(
+                run_scanning_process,
+                rag,
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
+                get_lightrag_token_credential(
+                    storage_access_token, storage_token_expiry
+                ),
+            )
+            response = JSONResponse(
+                content={"status": "scanning_started"},
+                headers={"X-Affinity-Token": rag.affinity_token},
+            )
+            return response
+        except Exception as e:
+            logging.error(f"Error POST /documents/scan: {str(e)}")
+            logging.error(traceback.format_exc())
+            raise HTTPException(status_code=500, detail=str(e))
 
     @router.get("/scan-progress")
     async def get_scan_progress(
-        base_request: BaseRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -484,8 +511,13 @@ def create_document_routes(
         storage_access_token = extract_token_value(
             storage_access_token, "Storage_Access_Token"
         )
-        rag: LightRAG = initialize_rag(
-            rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
+        rag = initialize_rag_with_header(
+            rag_instance_manager,
+            storage_account_url,
+            storage_container_name,
+            X_Affinity_Token,
+            storage_access_token,
+            storage_token_expiry,
         )
         async with rag.progress_lock:
             if X_Affinity_Token is None:
@@ -500,9 +532,11 @@ def create_document_routes(
         "/text", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def insert_text(
-        base_request: BaseRequest,
         request: InsertTextRequest,
         background_tasks: BackgroundTasks,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -533,19 +567,30 @@ def create_document_routes(
             storage_access_token, "Storage_Access_Token"
         )
         try:
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
-            background_tasks.add_task(pipeline_index_texts, rag, [request.text])
+            background_tasks.add_task(
+                pipeline_index_texts,
+                rag,
+                [request.text],
+                storage_account_url,
+                storage_container_name,
+                get_lightrag_token_credential(
+                    storage_access_token, storage_token_expiry
+                ),
+            )
             response = JSONResponse(
                 content={
                     "status": "success",
@@ -565,9 +610,11 @@ def create_document_routes(
         dependencies=[Depends(optional_api_key)],
     )
     async def insert_texts(
-        base_request: BaseRequest,
         request: InsertTextsRequest,
         background_tasks: BackgroundTasks,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -598,19 +645,30 @@ def create_document_routes(
             storage_access_token, "Storage_Access_Token"
         )
         try:
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
-            background_tasks.add_task(pipeline_index_texts, rag, request.texts)
+            background_tasks.add_task(
+                pipeline_index_texts,
+                rag,
+                request.texts,
+                storage_account_url,
+                storage_container_name,
+                get_lightrag_token_credential(
+                    storage_access_token, storage_token_expiry
+                ),
+            )
             response = JSONResponse(
                 content={
                     "status": "success",
@@ -628,9 +686,11 @@ def create_document_routes(
         "/file", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def insert_file(
-        base_request: BaseRequest,
         background_tasks: BackgroundTasks,
         file: UploadFile = File(...),
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -661,11 +721,13 @@ def create_document_routes(
             storage_access_token, "Storage_Access_Token"
         )
         try:
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             if not rag.document_manager.is_supported_file(file.filename):
                 raise HTTPException(
@@ -675,30 +737,27 @@ def create_document_routes(
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
             temp_path = await upload_file(
-                rag.document_manager.input_dir,
-                base_request.storage_account_url,
-                base_request.storage_container_name,
+                storage_account_url,
+                storage_container_name,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
                 rag,
                 file,
             )
-
-            # Add to background tasks
-            background_tasks.add_task(
-                pipeline_index_file,
+            await pipeline_index_file(
                 rag,
                 temp_path,
-                base_request.storage_account_url,
-                base_request.storage_container_name,
+                ai_access_token,
+                storage_account_url,
+                storage_container_name,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
-                ),
+                    storage_access_token, storage_token_expiry
+                )
             )
             response = JSONResponse(
                 content={
@@ -717,7 +776,9 @@ def create_document_routes(
         "", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
     async def clear_documents(
-        base_request: BaseRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -744,11 +805,13 @@ def create_document_routes(
             storage_access_token, "Storage_Access_Token"
         )
         try:
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             rag.text_chunks = []
             rag.entities_vdb = None
@@ -768,7 +831,9 @@ def create_document_routes(
 
     @router.get("", dependencies=[Depends(optional_api_key)])
     async def documents(
-        base_request: BaseRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -803,16 +868,18 @@ def create_document_routes(
                 DocStatus.PROCESSED,
                 DocStatus.FAILED,
             )
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
             )
             await wait_for_storage_initialization(
                 rag,
                 get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
             tasks = [rag.get_docs_by_status(status) for status in statuses]

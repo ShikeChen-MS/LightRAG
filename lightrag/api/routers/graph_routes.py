@@ -4,17 +4,15 @@ This module contains all graph-related routes for the LightRAG API.
 
 import json
 from typing import Optional
-from ..base_request import BaseRequest
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from ..utils_api import (
     get_api_key_dependency,
-    initialize_rag,
+    initialize_rag_with_header,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
     extract_token_value,
 )
-from ... import LightRAG
 
 router = APIRouter(tags=["graph"])
 
@@ -24,7 +22,9 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
 
     @router.get("/graph/label/list", dependencies=[Depends(optional_api_key)])
     async def get_graph_labels(
-        base_request: BaseRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
     ):
@@ -37,14 +37,17 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
         storage_access_token = extract_token_value(
             storage_access_token, "Storage_Access_Token"
         )
-        rag: LightRAG = initialize_rag(
-            rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
+        rag = initialize_rag_with_header(
+            rag_instance_manager,
+            storage_account_url,
+            storage_container_name,
+            X_Affinity_Token,
+            storage_access_token,
+            storage_token_expiry,
         )
         await wait_for_storage_initialization(
             rag,
-            get_lightrag_token_credential(
-                storage_access_token, base_request.storage_token_expiry
-            ),
+            get_lightrag_token_credential(storage_access_token, storage_token_expiry),
         )
         res = await rag.get_graph_labels()
         return JSONResponse(
@@ -53,8 +56,10 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
 
     @router.get("/graphs", dependencies=[Depends(optional_api_key)])
     async def get_knowledge_graph(
-        base_request: BaseRequest,
         label: str,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
         max_depth: int = 3,
@@ -68,14 +73,17 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
         storage_access_token = extract_token_value(
             storage_access_token, "Storage_Access_Token"
         )
-        rag = initialize_rag(
-            rag_instance_manager, base_request, X_Affinity_Token, storage_access_token
+        rag = initialize_rag_with_header(
+            rag_instance_manager,
+            storage_account_url,
+            storage_container_name,
+            X_Affinity_Token,
+            storage_access_token,
+            storage_token_expiry,
         )
         await wait_for_storage_initialization(
             rag,
-            get_lightrag_token_credential(
-                storage_access_token, base_request.storage_token_expiry
-            ),
+            get_lightrag_token_credential(storage_access_token, storage_token_expiry),
         )
         res = await rag.get_knowledge_graph(node_label=label, max_depth=max_depth)
         return JSONResponse(

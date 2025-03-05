@@ -2,13 +2,11 @@
 LightRAG FastAPI Server
 """
 
-from functools import partial
 from fastapi import (
     FastAPI,
     Depends,
     Header,
 )
-from lightrag.api.base_request import BaseRequest
 from lightrag.api.rag_instance_manager import RAGInstanceManager
 import os
 import logging
@@ -21,7 +19,7 @@ from .utils_api import (
     get_api_key_dependency,
     parse_args,
     display_splash_screen,
-    initialize_rag,
+    initialize_rag_with_header,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
     extract_token_value,
@@ -164,7 +162,9 @@ def create_app(args, rag_instance_manager):
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
-        base_request: BaseRequest,
+        storage_account_url: str = Header(None, alias="Storage_Account_Url"),
+        storage_container_name: str = Header(None, alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(None, alias="Storage_Access_Token_Expiry"),
         ai_access_token: str = Header(None, alias="Azure-AI-Access-Token"),
         storage_access_token: str = Header(None, alias="Storage_Access_Token"),
         X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
@@ -186,33 +186,37 @@ def create_app(args, rag_instance_manager):
         # initialize rag instance
         # send an example prompt to the model to check if it is working
         try:
-            rag = initialize_rag(
+            rag = initialize_rag_with_header(
                 rag_instance_manager,
-                base_request,
+                storage_account_url,
+                storage_container_name,
                 X_Affinity_Token,
                 storage_access_token,
+                storage_token_expiry,
+            )
+            lightrag_token = get_lightrag_token_credential(
+                storage_access_token, storage_token_expiry
             )
             await wait_for_storage_initialization(
                 rag,
-                get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
-                ),
+                lightrag_token,
             )
-            original_llm_model_func = rag.llm_model_func
-            rag.llm_model_func = partial(rag.llm_model_func, ai_access_token)
             result["LLM Test Prompt"] = (
                 "Please tell me a trivial fact about the universe."
             )
-            response = await rag.llm_model_func(result["LLM Test Prompt"])
+            response = await rag.llm_model_func(
+                access_token=ai_access_token, prompt=result["LLM Test Prompt"]
+            )
             result["LLM Response"] = response
+            result["Embedding Test Prompt"] = "Test text for embedding"
+            response = await rag.embedding_func(
+                aad_token=ai_access_token, texts=result["Embedding Test Prompt"]
+            )
+            result["Embedding Response Length"] = len(response[0])
             affinity_token = rag.affinity_token
         except Exception as e:
             result["Status"] = "Unhealthy"
             result["Error"] = str(e)
-        finally:
-            if rag is not None and (original_llm_model_func is not None):
-                rag.llm_model_func = original_llm_model_func
-
         return JSONResponse(
             content=result, headers={"X-Affinity-Token": affinity_token}
         )

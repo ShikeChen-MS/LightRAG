@@ -1,6 +1,6 @@
 import asyncio
 import json
-from dataclasses import dataclass
+from ..lightrag import EmbeddingFunc
 from io import BytesIO
 from typing import Any, final
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
@@ -15,13 +15,18 @@ from ..utils import (
 
 
 @final
-@dataclass
 class JsonKVStorage(BaseKVStorage):
-    def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs: Any):
+    def __init__(
+        self,
+        global_config: dict[str, Any],
+        namespace: str,
+        embedding_func: EmbeddingFunc,
+    ):
         self._data = None
         self._lock = asyncio.Lock()
         self.global_config = global_config
         self.namespace = namespace
+        self.embedding_func = embedding_func
 
     async def initialize(
         self,
@@ -92,8 +97,10 @@ class JsonKVStorage(BaseKVStorage):
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
-            with self._lock:
-                blob_client.upload_blob(self._data, lease=blob_lease, overwrite=True)
+            async with self._lock:
+                json_data = json.dumps(self._data)
+            json_bytes = BytesIO(json_data.encode("utf-8"))
+            blob_client.upload_blob(json_bytes, lease=blob_lease, overwrite=True)
             blob_lease.release()
             blob_lease = None
             lease.release()

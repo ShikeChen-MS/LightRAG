@@ -1,5 +1,5 @@
+import asyncio
 import os
-from dataclasses import dataclass
 from typing import Any, final
 import numpy as np
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
@@ -16,12 +16,13 @@ from graspologic import embed
 
 
 @final
-@dataclass
 class NetworkXStorage(BaseGraphStorage):
     def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs: Any):
         self._graph = None
         self.namespace = namespace
         self.global_config = global_config
+        self.embedding_func = kwargs["embedding_func"]
+        self.lock = asyncio.Lock()
 
     @staticmethod
     def load_nx_graph(file_name) -> nx.Graph:
@@ -143,7 +144,8 @@ class NetworkXStorage(BaseGraphStorage):
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
             linefeed = chr(10)
-            content = linefeed.join(nx.generate_graphml(self._graph))
+            async with self.lock:
+                content = linefeed.join(nx.generate_graphml(self._graph))
             blob_client.upload_blob(content, lease=blob_lease, overwrite=True)
             blob_lease.release()
             blob_lease = None

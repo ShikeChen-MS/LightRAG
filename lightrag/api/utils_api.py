@@ -8,6 +8,7 @@ import argparse
 from typing import Optional
 import sys
 from ascii_colors import ASCIIColors
+
 from . import __api_version__
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
@@ -15,7 +16,7 @@ from fastapi.security import APIKeyHeader
 from starlette.status import HTTP_403_FORBIDDEN
 from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
-from ..base import StoragesStatus, InitializeStatus
+from ..base import InitializeStatus
 
 # Load environment variables
 load_dotenv(override=True)
@@ -286,18 +287,23 @@ async def wait_for_storage_initialization(
     raise HTTPException(status_code=500, detail="Storage initialization failed...")
 
 
-def initialize_rag(
-    rag_instance_manager, base_request, x_affinity_token, storage_access_token
+def initialize_rag_with_header(
+    rag_instance_manager,
+    storage_account_url,
+    storage_container_name,
+    x_affinity_token,
+    storage_access_token,
+    storage_token_expiry,
 ):
     try:
         if x_affinity_token:
             rag = rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
         else:
             rag = rag_instance_manager.get_lightrag(
-                storage_account_url=base_request.storage_account_url,
-                storage_container_name=base_request.storage_container_name,
+                storage_account_url=storage_account_url,
+                storage_container_name=storage_container_name,
                 access_token=get_lightrag_token_credential(
-                    storage_access_token, base_request.storage_token_expiry
+                    storage_access_token, storage_token_expiry
                 ),
             )
         return rag

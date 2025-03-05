@@ -18,7 +18,6 @@ from ..kg.nanovectordbs import NanoVectorDB
 
 
 @final
-@dataclass
 class NanoVectorDBStorage(BaseVectorStorage, ABC):
     def __init__(self, global_config: dict[str, Any], namespace: str, **kwargs: Any):
         self._client = None
@@ -97,7 +96,11 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
     def client(self):
         return self._client
 
-    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
+    async def upsert(
+            self,
+            data: dict[str, dict[str, Any]],
+            ai_access_token: str
+    ) -> None:
         logger.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
@@ -117,7 +120,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             for i in range(0, len(contents), self._max_batch_size)
         ]
 
-        embedding_tasks = [self.embedding_func(batch) for batch in batches]
+        embedding_tasks = [self.embedding_func(ai_access_token, batch) for batch in batches]
         embeddings_list = await asyncio.gather(*embedding_tasks)
 
         embeddings = np.concatenate(embeddings_list)
@@ -210,8 +213,6 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> None:
-        async with self._save_lock:
-            json_data = self._client.save()
         lease = None
         blob_lease = None
         try:
@@ -229,7 +230,10 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             )
             blob_client = container_client.get_blob_client(blob_name)
             blob_lease = blob_client.acquire_lease()
-            blob_client.upload_blob(json_data, lease=blob_lease, overwrite=True)
+            async with self._save_lock:
+                json_data = self._client.save()
+            json_bytes = BytesIO(json_data.encode("utf-8"))
+            blob_client.upload_blob(json_bytes, lease=blob_lease, overwrite=True)
             blob_lease.release()
             blob_lease = None
             lease.release()
