@@ -137,7 +137,18 @@ class JsonKVStorage(BaseKVStorage):
         left_data = {k: v for k, v in data.items() if k not in self._data}
         self._data.update(left_data)
 
-    async def delete(self, ids: list[str]) -> None:
+    async def clear(self):
+        self._data = {}
+
+    async def delete(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential,
+            ids: list[str]
+    ) -> None:
         for doc_id in ids:
             self._data.pop(doc_id, None)
-        await self.index_done_callback()
+        await self.index_done_callback(
+            storage_account_url, storage_container_name, access_token
+        )

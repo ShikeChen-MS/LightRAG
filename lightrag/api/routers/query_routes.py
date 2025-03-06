@@ -12,7 +12,7 @@ from fastapi import (
     HTTPException,
     Header,
 )
-
+from azure.storage.blob import BlobServiceClient
 from ... import LightRAG
 from ...base import QueryParam
 from ..utils_api import (
@@ -154,6 +154,79 @@ def create_query_routes(
     rag_instance_manager, api_key: Optional[str] = None, top_k: int = 60
 ):
     optional_api_key = get_api_key_dependency(api_key)
+
+    @router.delete(
+        "/query/cache", dependencies=[Depends(optional_api_key)]
+    )
+    async def clear_query_cache(
+        storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_container_name: str = Header(alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(
+            default=None, alias="Storage_Access_Token_Expiry"
+        ),
+        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
+        storage_access_token: str = Header(alias="Storage_Access_Token"),
+        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+    ):
+        lease = None
+        blob_lease = None
+        try:
+            storage_access_token = extract_token_value(
+                storage_access_token, "Storage_Access_Token"
+            )
+            lightrag_token = get_lightrag_token_credential(
+                storage_access_token, storage_token_expiry
+            )
+            rag: LightRAG = initialize_rag_with_header(
+                rag_instance_manager,
+                storage_account_url,
+                storage_container_name,
+                X_Affinity_Token,
+                storage_access_token,
+                storage_token_expiry,
+            )
+            await wait_for_storage_initialization(
+                rag,
+                get_lightrag_token_credential(
+                    storage_access_token, storage_token_expiry
+                ),
+            )
+            await rag.llm_response_cache.clear()
+            blob_client = BlobServiceClient(
+                account_url=storage_account_url, credential=lightrag_token
+            )
+            container_client = blob_client.get_container_client(storage_container_name)
+            container_client.get_container_properties()# this is to check if the container exists and authentication is valid
+            lease = container_client.acquire_lease()
+            blobs_list = container_client.list_blobs()
+            file_name = f"{rag.working_dir}/data/kv_store_llm_response_cache.json"
+            if file_name in [blob.name for blob in blobs_list]:
+                blob_client = container_client.get_blob_client(file_name)
+                blob_lease = blob_client.acquire_lease()
+                content = "{}"
+                blob_client.upload_blob(content, lease=blob_lease, overwrite=True)
+                blob_lease.release()
+                blob_lease = None
+                lease.release()
+                lease = None
+            response = JSONResponse(
+                content={
+                    "status": "success",
+                    "message": "LLM response cache cleared successfully.",
+                },
+                headers={"X-Affinity-Token": rag.affinity_token},
+            )
+            return response
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if lease:
+                lease.release()
+            if blob_lease:
+                blob_lease.release()
+
+
+
 
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]

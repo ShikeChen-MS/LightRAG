@@ -165,6 +165,10 @@ class BaseKVStorage(StorageNameSpace, ABC):
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         """Upsert data"""
 
+    @abstractmethod
+    async def clear(self) -> None:
+        """Clear all data"""
+
 
 @dataclass
 class BaseGraphStorage(StorageNameSpace, ABC):
