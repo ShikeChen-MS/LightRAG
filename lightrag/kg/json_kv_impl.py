@@ -138,10 +138,10 @@ class JsonKVStorage(BaseKVStorage):
         self._data.update(left_data)
 
     async def clear(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ):
         self._data = {}
         await self.index_done_callback(

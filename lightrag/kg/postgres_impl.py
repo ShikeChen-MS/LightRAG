@@ -33,11 +33,6 @@ if sys.platform.startswith("win"):
 
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-import pipmaster as pm
-
-if not pm.is_installed("asyncpg"):
-    pm.install("asyncpg")
-
 import asyncpg
 from asyncpg import Pool
 

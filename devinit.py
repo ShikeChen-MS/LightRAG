@@ -79,7 +79,6 @@ if __name__ == "__main__":
     venv_name = ".venv"
     requirements_file = [
         "requirements.txt",
-        "./lightrag/api/requirements.txt",
         "./lightrag/tools/lightrag_visualizer/requirements.txt",
         "./devrequirements.txt",
     ]

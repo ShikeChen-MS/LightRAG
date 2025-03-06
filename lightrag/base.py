@@ -167,10 +167,10 @@ class BaseKVStorage(StorageNameSpace, ABC):
 
     @abstractmethod
     async def clear(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ) -> None:
         """Clear all data"""
 

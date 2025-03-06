@@ -217,17 +217,17 @@ async def pipeline_enqueue_file(
                 | ".scss"
                 | ".less"
             ):
-                lease: BlobLeaseClient = await try_get_container_lease(
-                    container_client
-                )
+                lease: BlobLeaseClient = await try_get_container_lease(container_client)
                 blob_client = container_client.get_blob_client(file_name)
-                blob_lease: BlobLeaseClient = await try_get_container_lease(
-                    blob_client
-                )
-                file_byte = container_client.download_blob(file_name, lease=blob_lease).readall()
+                blob_lease: BlobLeaseClient = await try_get_container_lease(blob_client)
+                file_byte = container_client.download_blob(
+                    file_name, lease=blob_lease
+                ).readall()
                 blob_lease.release()
-                blob_lease =None
+                blob_lease = None
                 content = file_byte.decode("utf-8")
+                lease.release()
+                lease = None
 
             case ".pdf":
                 if not pm.is_installed("pypdf2"):
@@ -376,7 +376,7 @@ async def empty_light_rag_databases(
             blob_client = container_client.get_blob_client(blob)
             blob_lease = await try_get_container_lease(blob_client)
             blob_client.delete_blob(lease=blob_lease)
-            blob_lease = None # if blob deleted successfully, lease will be deleted along with it, so no release.
+            blob_lease = None  # if blob deleted successfully, lease will be deleted along with it, so no release.
         lease.release()
         lease = None
         await rag.initialize_storages(access_token)
@@ -412,7 +412,7 @@ async def upload_file(
         if file_name in blob_list:
             logging.error(f"File {file_name} already exists in storage")
             raise HTTPException(
-                status_code=400,
+                status_code=409,
                 detail=f"File {file_name} already exists in storage {storage_container_name}",
             )
         else:

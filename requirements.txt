@@ -1,4 +1,7 @@
 aiohttp
+aiofiles
+ascii_colors
+asyncpg
 configparser
 future
 numpy
@@ -13,3 +16,7 @@ networkx
 setuptools
 tenacity
 tiktoken
+fastapi
+graspologic
+python-multipart
+uvicorn
