@@ -15,6 +15,7 @@ from ..base import (
     BaseVectorStorage,
 )
 from ..kg.nanovectordbs import NanoVectorDB
+from ..api.utils_api import try_get_container_lease
 
 
 @final
@@ -55,7 +56,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             # to prevent the file from being modified while trying to read
             # we acquire a lease to make sure no ops is performing on the file
             # also we acquire a lease on the container to prevent the container from being deleted
-            lease: BlobLeaseClient = container_client.acquire_lease()
+            lease = await try_get_container_lease(container_client)
             blob_list = container_client.list_blob_names()
             blob_name = (
                 f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
@@ -71,7 +72,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 blob_client.upload_blob(json_bytes, overwrite=False)
                 return
             blob_client = container_client.get_blob_client(blob_name)
-            blob_lease = blob_client.acquire_lease()
+            blob_lease = await try_get_container_lease(blob_client)
             content = blob_client.download_blob(lease=blob_lease).readall()
             blob_lease.release()
             blob_lease = None
@@ -226,12 +227,12 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             container_client.get_container_properties()
             # to protect file integrity and ensure complete upload
             # acquire lease on the container to prevent any other ops
-            lease: BlobLeaseClient = container_client.acquire_lease()
+            lease: BlobLeaseClient = await try_get_container_lease(container_client)
             blob_name = (
                 f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
             )
             blob_client = container_client.get_blob_client(blob_name)
-            blob_lease = blob_client.acquire_lease()
+            blob_lease = await try_get_container_lease(blob_client)
             async with self._save_lock:
                 json_data = self._client.save()
             json_bytes = BytesIO(json_data.encode("utf-8"))

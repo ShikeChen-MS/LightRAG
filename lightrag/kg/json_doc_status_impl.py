@@ -13,6 +13,7 @@ from ..base import (
 from ..utils import (
     logger,
 )
+from ..api.utils_api import try_get_container_lease
 
 
 @final
@@ -45,7 +46,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             )
             container_client = blob_client.get_container_client(storage_container_name)
             container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
-            lease: BlobLeaseClient = container_client.acquire_lease()
+            lease = await try_get_container_lease(container_client)
             blob_list = container_client.list_blob_names()
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             if not blob_name in blob_list:
@@ -62,7 +63,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             # we acquire a lease to make sure no ops is performing on the file
             # also we acquire a lease on the container to prevent the container from being deleted
             blob_client = container_client.get_blob_client(blob_name)
-            blob_lease = blob_client.acquire_lease()
+            blob_lease = await try_get_container_lease(blob_client)
             content = blob_client.download_blob(lease=blob_lease).readall()
             blob_lease.release()
             blob_lease = None
@@ -134,10 +135,10 @@ class JsonDocStatusStorage(DocStatusStorage):
             container_client.get_container_properties()
             # to protect file integrity and ensure complete upload
             # acquire lease on the container to prevent any other ops
-            lease: BlobLeaseClient = container_client.acquire_lease()
+            lease: BlobLeaseClient = await try_get_container_lease(container_client)
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             blob_client = container_client.get_blob_client(blob_name)
-            blob_lease = blob_client.acquire_lease()
+            blob_lease = await try_get_container_lease(blob_client)
             async with self._lock:
                 json_data = json.dumps(self._data)
             json_bytes = BytesIO(json_data.encode("utf-8"))

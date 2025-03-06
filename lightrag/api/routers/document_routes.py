@@ -156,7 +156,8 @@ async def pipeline_enqueue_file(
     Returns:
         bool: True if the file was successfully enqueued, False otherwise
     """
-
+    lease = None
+    blob_lease = None
     try:
         content = ""
         root, ext = os.path.splitext(file_path)
@@ -177,6 +178,7 @@ async def pipeline_enqueue_file(
                 detail=f"File {file_name} not found in storage {storage_container_name}",
             )
         lease.release()
+        lease = None
 
         # Process based on file type
         match ext:
@@ -215,28 +217,17 @@ async def pipeline_enqueue_file(
                 | ".scss"
                 | ".less"
             ):
-                lease = None
-                blob_lease = None
-                try:
-                    lease: BlobLeaseClient = await try_get_container_lease(
-                        container_client
-                    )
-                    blob_client = container_client.get_blob_client(file_name)
-                    blob_lease: BlobLeaseClient = await try_get_container_lease(
-                        blob_client
-                    )
-                    file_byte = container_client.download_blob(file_name).readall()
-                    content = file_byte.decode("utf-8")
-                except Exception as ex:
-                    logging.error(
-                        f"Error processing or enqueueing file {file_path}: {str(ex)}"
-                    )
-                    raise HTTPException(status_code=500, detail=str(ex))
-                finally:
-                    if blob_lease:
-                        blob_lease.release()
-                    if lease:
-                        lease.release()
+                lease: BlobLeaseClient = await try_get_container_lease(
+                    container_client
+                )
+                blob_client = container_client.get_blob_client(file_name)
+                blob_lease: BlobLeaseClient = await try_get_container_lease(
+                    blob_client
+                )
+                file_byte = container_client.download_blob(file_name, lease=blob_lease).readall()
+                blob_lease.release()
+                blob_lease =None
+                content = file_byte.decode("utf-8")
 
             case ".pdf":
                 if not pm.is_installed("pypdf2"):
@@ -307,11 +298,17 @@ async def pipeline_enqueue_file(
             return True
         else:
             logging.error(f"No content could be extracted from file: {file_path}")
+            return False
 
     except Exception as e:
         logging.error(f"Error processing or enqueueing file {file_path}: {str(e)}")
         logging.error(traceback.format_exc())
-    return False
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if lease:
+            lease.release()
+        if blob_lease:
+            blob_lease.release()
 
 
 async def pipeline_index_file(
@@ -365,17 +362,33 @@ async def empty_light_rag_databases(
     storage_container_name: str,
     access_token: LightRagTokenCredential,
 ):
-    blob_client = BlobServiceClient(
-        account_url=storage_account_url, credential=access_token
-    )
-    container_client = blob_client.get_container_client(storage_container_name)
-    container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
-    blobs_list = container_client.list_blobs(name_starts_with=rag.working_dir)
-    for blob in blobs_list:
-        blob_client = container_client.get_blob_client(blob)
-        blob_lease = await try_get_container_lease(blob_client)
-        blob_client.delete_blob(lease=blob_lease)
-    await rag.initialize_storages(access_token)
+    lease = None
+    blob_lease = None
+    try:
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
+        )
+        container_client = blob_client.get_container_client(storage_container_name)
+        container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+        lease: BlobLeaseClient = await try_get_container_lease(container_client)
+        blobs_list = container_client.list_blobs(name_starts_with=rag.working_dir)
+        for blob in blobs_list:
+            blob_client = container_client.get_blob_client(blob)
+            blob_lease = await try_get_container_lease(blob_client)
+            blob_client.delete_blob(lease=blob_lease)
+            blob_lease = None # if blob deleted successfully, lease will be deleted along with it, so no release.
+        lease.release()
+        lease = None
+        await rag.initialize_storages(access_token)
+    except Exception as e:
+        logging.error(f"Error emptying databases: {str(e)}")
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if lease:
+            lease.release()
+        if blob_lease:
+            blob_lease.release()
 
 
 async def upload_file(
@@ -386,34 +399,37 @@ async def upload_file(
     file: UploadFile = File(...),
 ) -> str:
     """Save the uploaded file to a temporary location"""
-    blob_client = BlobServiceClient(
-        account_url=storage_account_url, credential=access_token
-    )
-    container_client = blob_client.get_container_client(storage_container_name)
-    container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
-    file_name = f"{rag.document_manager.input_dir}/{file.filename}"
     lease = None
-    while lease is None:
-        try:
-            lease: BlobLeaseClient = container_client.acquire_lease()
-            break
-        except Exception as e:
-            logging.error(f"Error acquiring lease: {str(e)}")
-            await asyncio.sleep(5)
-    blob_list = container_client.list_blob_names()
-    if file_name in blob_list:
-        logging.error(f"File {file_name} already exists in storage")
-        raise HTTPException(
-            status_code=400,
-            detail=f"File {file_name} already exists in storage {storage_container_name}",
+    try:
+        blob_client = BlobServiceClient(
+            account_url=storage_account_url, credential=access_token
         )
-    else:
-        blob_name = file_name
-        blob_client = container_client.get_blob_client(blob_name)
-        file_bytes = await file.read()
-        blob_client.upload_blob(file_bytes, overwrite=False)
-    lease.release()
-    return file.filename
+        container_client = blob_client.get_container_client(storage_container_name)
+        container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
+        file_name = f"{rag.document_manager.input_dir}/{file.filename}"
+        lease = await try_get_container_lease(container_client)
+        blob_list = container_client.list_blob_names()
+        if file_name in blob_list:
+            logging.error(f"File {file_name} already exists in storage")
+            raise HTTPException(
+                status_code=400,
+                detail=f"File {file_name} already exists in storage {storage_container_name}",
+            )
+        else:
+            blob_name = file_name
+            blob_client = container_client.get_blob_client(blob_name)
+            file_bytes = await file.read()
+            blob_client.upload_blob(file_bytes, overwrite=False)
+        lease.release()
+        lease = None
+        return file.filename
+    except Exception as e:
+        logging.error(f"Error uploading file {file.filename}: {str(e)}")
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        if lease:
+            lease.release()
 
 
 async def run_scanning_process(

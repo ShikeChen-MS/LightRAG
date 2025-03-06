@@ -12,7 +12,6 @@ from fastapi import (
     HTTPException,
     Header,
 )
-from azure.storage.blob import BlobServiceClient
 from ... import LightRAG
 from ...base import QueryParam
 from ..utils_api import (
@@ -189,24 +188,9 @@ def create_query_routes(
                     storage_access_token, storage_token_expiry
                 ),
             )
-            await rag.llm_response_cache.clear()
-            blob_client = BlobServiceClient(
-                account_url=storage_account_url, credential=lightrag_token
+            await rag.llm_response_cache.clear(
+                storage_account_url, storage_container_name, lightrag_token
             )
-            container_client = blob_client.get_container_client(storage_container_name)
-            container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
-            lease = container_client.acquire_lease()
-            blobs_list = container_client.list_blobs()
-            file_name = f"{rag.working_dir}/data/kv_store_llm_response_cache.json"
-            if file_name in [blob.name for blob in blobs_list]:
-                blob_client = container_client.get_blob_client(file_name)
-                blob_lease = blob_client.acquire_lease()
-                content = "{}"
-                blob_client.upload_blob(content, lease=blob_lease, overwrite=True)
-                blob_lease.release()
-                blob_lease = None
-                lease.release()
-                lease = None
             response = JSONResponse(
                 content={
                     "status": "success",

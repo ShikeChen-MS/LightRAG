@@ -166,7 +166,12 @@ class BaseKVStorage(StorageNameSpace, ABC):
         """Upsert data"""
 
     @abstractmethod
-    async def clear(self) -> None:
+    async def clear(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential,
+    ) -> None:
         """Clear all data"""
 
 

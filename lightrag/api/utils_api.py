@@ -328,9 +328,9 @@ async def try_get_container_lease(
             retry_count += 1
             lease = None
             logger.warning(
-                f"Failed to acquire lease, error detail: {str(e)}, retrying in 5 seconds..."
+                f"Failed to acquire lease, error detail: {str(e)}, retrying in 3 seconds..."
             )
-            await asyncio.sleep(5)
+            await asyncio.sleep(3)
     if lease is None:
         logger.error(f"Failed to acquire lease after 50 retries, error....")
         raise HTTPException(

@@ -9,9 +9,9 @@ from ..base import (
     BaseKVStorage,
 )
 from ..utils import (
-    load_json,
     logger,
 )
+from ..api.utils_api import try_get_container_lease
 
 
 @final
@@ -42,7 +42,7 @@ class JsonKVStorage(BaseKVStorage):
             )
             container_client = blob_client.get_container_client(storage_container_name)
             container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
-            lease: BlobLeaseClient = container_client.acquire_lease()
+            lease: BlobLeaseClient = await try_get_container_lease(container_client)
             blob_list = container_client.list_blob_names()
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             if not blob_name in blob_list:
@@ -59,7 +59,7 @@ class JsonKVStorage(BaseKVStorage):
             # we acquire a lease to make sure no ops is performing on the file
             # also we acquire a lease on the container to prevent the container from being deleted
             blob_client = container_client.get_blob_client(blob_name)
-            blob_lease = blob_client.acquire_lease()
+            blob_lease = await try_get_container_lease(blob_client)
             content = blob_client.download_blob(lease=blob_lease).readall()
             blob_lease.release()
             blob_lease = None
@@ -93,10 +93,10 @@ class JsonKVStorage(BaseKVStorage):
             container_client.get_container_properties()
             # to protect file integrity and ensure complete upload
             # acquire lease on the container to prevent any other ops
-            lease: BlobLeaseClient = container_client.acquire_lease()
+            lease: BlobLeaseClient = await try_get_container_lease(container_client)
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             blob_client = container_client.get_blob_client(blob_name)
-            blob_lease = blob_client.acquire_lease()
+            blob_lease = await try_get_container_lease(blob_client)
             async with self._lock:
                 json_data = json.dumps(self._data)
             json_bytes = BytesIO(json_data.encode("utf-8"))
@@ -137,8 +137,16 @@ class JsonKVStorage(BaseKVStorage):
         left_data = {k: v for k, v in data.items() if k not in self._data}
         self._data.update(left_data)
 
-    async def clear(self):
+    async def clear(
+            self,
+            storage_account_url: str,
+            storage_container_name: str,
+            access_token: LightRagTokenCredential,
+    ):
         self._data = {}
+        await self.index_done_callback(
+            storage_account_url, storage_container_name, access_token
+        )
 
     async def delete(
         self,
