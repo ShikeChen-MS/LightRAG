@@ -391,8 +391,7 @@ async def extract_entities(
     total_chunks = len(ordered_chunks)
 
     async def _user_llm_func_with_cache(
-        input_text: str,
-        history_messages: list[dict[str, str]] = None
+        input_text: str, history_messages: list[dict[str, str]] = None
     ) -> str:
         if enable_llm_cache_for_entity_extract and llm_response_cache:
             if history_messages:
@@ -606,7 +605,7 @@ async def kg_query(
         args_hash,
         query,
         query_param.mode,
-        cache_type="query"
+        cache_type="query",
     )
     if cached_response is not None:
         return cached_response
@@ -726,12 +725,7 @@ async def extract_keywords_only(
     # 1. Handle cache if needed - add cache type for keywords
     args_hash = compute_args_hash(param.mode, text, cache_type="keywords")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv,
-        ai_access_token,
-        args_hash,
-        text,
-        param.mode,
-        cache_type="keywords"
+        hashing_kv, ai_access_token, args_hash, text, param.mode, cache_type="keywords"
     )
     if cached_response is not None:
         try:
@@ -837,12 +831,7 @@ async def mix_kg_vector_query(
     use_model_func = global_config["llm_model_func"]
     args_hash = compute_args_hash("mix", query, cache_type="query")
     cached_response, quantized, min_val, max_val = await handle_cache(
-        hashing_kv,
-        ai_access_token,
-        args_hash,
-        query,
-        "mix",
-        cache_type="query"
+        hashing_kv, ai_access_token, args_hash, query, "mix", cache_type="query"
     )
     if cached_response is not None:
         return cached_response
@@ -907,7 +896,9 @@ async def mix_kg_vector_query(
         try:
             # Reduce top_k for vector search in hybrid mode since we have structured information from KG
             mix_topk = min(10, query_param.top_k)
-            results = await chunks_vdb.query(ai_access_token,augmented_query, top_k=mix_topk)
+            results = await chunks_vdb.query(
+                ai_access_token, augmented_query, top_k=mix_topk
+            )
             if not results:
                 return None
 
@@ -1126,7 +1117,7 @@ async def _get_node_data(
     logger.info(
         f"Query nodes: {query}, top_k: {query_param.top_k}, cosine: {entities_vdb.cosine_better_than_threshold}"
     )
-    results = await entities_vdb.query( ai_access_token, query, top_k=query_param.top_k)
+    results = await entities_vdb.query(ai_access_token, query, top_k=query_param.top_k)
     if not len(results):
         return "", "", ""
     # get entity information
@@ -1365,7 +1356,9 @@ async def _get_edge_data(
     logger.info(
         f"Query edges: {keywords}, top_k: {query_param.top_k}, cosine: {relationships_vdb.cosine_better_than_threshold}"
     )
-    results = await relationships_vdb.query(ai_access_token, keywords, top_k=query_param.top_k)
+    results = await relationships_vdb.query(
+        ai_access_token, keywords, top_k=query_param.top_k
+    )
 
     if not len(results):
         return "", "", ""
@@ -1610,7 +1603,7 @@ async def naive_query(
         args_hash,
         query,
         query_param.mode,
-        cache_type="query"
+        cache_type="query",
     )
     if cached_response is not None:
         return cached_response
@@ -1734,7 +1727,7 @@ async def kg_query_with_keywords(
         args_hash,
         query,
         query_param.mode,
-        cache_type="query"
+        cache_type="query",
     )
     if cached_response is not None:
         return cached_response

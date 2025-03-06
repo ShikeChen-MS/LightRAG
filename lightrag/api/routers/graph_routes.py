@@ -90,7 +90,7 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
             )
             res = await rag.get_knowledge_graph(node_label=label, max_depth=max_depth)
             return JSONResponse(
-                content=json.dumps(res),
+                content=res.json(),
                 headers={"X-Affinity-Token": rag.affinity_token},
             )
         except Exception as e:

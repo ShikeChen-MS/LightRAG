@@ -3,6 +3,7 @@ import asyncio
 import configparser
 import os
 import threading
+import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -429,8 +430,7 @@ class LightRAG:
         split_by_character_only: bool = False,
         ids: str | list[str] | None = None,
     ) -> None:
-        """Async Insert documents with checkpoint support
-        """
+        """Async Insert documents with checkpoint support"""
         await self.apipeline_enqueue_documents(
             storage_account_url, storage_container_name, access_token, input, ids
         )
@@ -727,6 +727,7 @@ class LightRAG:
                         )
                     except Exception as e:
                         logger.error(f"Failed to process document {doc_id}: {str(e)}")
+                        traceback.print_exc()
                         await self.doc_status.upsert(
                             {
                                 doc_id: {
@@ -1097,7 +1098,7 @@ class LightRAG:
                 storage_access_token,
                 query,
                 prompt,
-                param
+                param,
             )
         )
 
@@ -1221,10 +1222,10 @@ class LightRAG:
         return response
 
     async def _query_done(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
     ):
         await self.llm_response_cache.index_done_callback(
             storage_account_url, storage_container_name, access_token

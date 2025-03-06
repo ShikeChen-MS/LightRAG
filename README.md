@@ -319,7 +319,6 @@ LightRAG supports integration with LlamaIndex.
 
 1. **LlamaIndex** (`llm/llama_index_impl.py`):
    - Integrates with OpenAI and other providers through LlamaIndex
-   - See [LlamaIndex Documentation](lightrag/llm/Readme.md) for detailed setup and examples
 
 ### Example Usage
 
@@ -340,11 +339,6 @@ rag = LightRAG(
     ),
 )
 ```
-
-#### For detailed documentation and examples, see:
-- [LlamaIndex Documentation](lightrag/llm/Readme.md)
-- [Direct OpenAI Example](examples/lightrag_llamaindex_direct_demo.py)
-- [LiteLLM Proxy Example](examples/lightrag_llamaindex_litellm_demo.py)
 
 </details>
 <details>

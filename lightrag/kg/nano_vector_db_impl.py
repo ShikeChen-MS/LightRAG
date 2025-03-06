@@ -136,10 +136,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             )
 
     async def query(
-            self,
-            ai_access_token: str,
-            query: str,
-            top_k: int
+        self, ai_access_token: str, query: str, top_k: int
     ) -> list[dict[str, Any]]:
         embedding = await self.embedding_func(ai_access_token, [query])
         embedding = embedding[0]

@@ -13,7 +13,6 @@ from ..rag_instance_manager import RAGInstanceManager
 from typing import Dict, List, Optional, Any
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -50,6 +49,10 @@ class InsertTextRequest(BaseModel):
         description="The text to insert",
     )
 
+    id: Optional[str] = Field(
+        default=None, min_length=1, description="The id of the text to insert"
+    )
+
     @field_validator("text", mode="after")
     @classmethod
     def strip_after(cls, text: str) -> str:
@@ -60,6 +63,10 @@ class InsertTextsRequest(BaseModel):
     texts: list[str] = Field(
         min_length=1,
         description="The texts to insert",
+    )
+
+    ids: Optional[list[str]] = Field(
+        default=None, min_length=1, description="The ids of the texts to insert"
     )
 
     @field_validator("texts", mode="after")
@@ -335,6 +342,7 @@ async def pipeline_index_file(
 async def pipeline_index_texts(
     rag: LightRAG,
     texts: List[str],
+    ids: List[str] | None,
     ai_access_token: str,
     storage_account_url: str,
     storage_container_name: str,
@@ -344,17 +352,18 @@ async def pipeline_index_texts(
     if not texts:
         return
     await rag.apipeline_enqueue_documents(
-        storage_account_url, storage_container_name, access_token, texts
+        storage_account_url, storage_container_name, access_token, texts, ids
     )
     await rag.apipeline_process_enqueue_documents(
         ai_access_token, storage_account_url, storage_container_name, access_token
     )
 
+
 async def empty_light_rag_databases(
-        rag: LightRAG,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+    rag: LightRAG,
+    storage_account_url: str,
+    storage_container_name: str,
+    access_token: LightRagTokenCredential,
 ):
     blob_client = BlobServiceClient(
         account_url=storage_account_url, credential=access_token
@@ -367,6 +376,7 @@ async def empty_light_rag_databases(
         blob_lease = await try_get_container_lease(blob_client)
         blob_client.delete_blob(lease=blob_lease)
     await rag.initialize_storages(access_token)
+
 
 async def upload_file(
     storage_account_url: str,
@@ -458,120 +468,6 @@ def create_document_routes(
 ):
     optional_api_key = get_api_key_dependency(api_key)
 
-    @router.post("/scan", dependencies=[Depends(optional_api_key)])
-    async def scan_for_new_documents(
-        background_tasks: BackgroundTasks,
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
-        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
-    ):
-        """
-        Trigger the scanning process for new documents.
-
-        This endpoint initiates a background task that scans the input directory for new documents
-        and processes them. If a scanning process is already running, it returns a status indicating
-        that fact.
-        """
-        try:
-            ai_access_token = extract_token_value(
-                ai_access_token, "Azure-AI-Access-Token"
-            )
-            storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
-            )
-            rag = initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            async with rag.progress_lock:
-                if rag.scan_progress["is_scanning"]:
-                    return {"status": "already_scanning"}
-
-                rag.scan_progress["is_scanning"] = True
-                rag.scan_progress["indexed_count"] = 0
-                rag.scan_progress["progress"] = 0
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
-            )
-            # Start the scanning process in the background
-            background_tasks.add_task(
-                run_scanning_process,
-                rag,
-                ai_access_token,
-                storage_account_url,
-                storage_container_name,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
-            )
-            response = JSONResponse(
-                content={"status": "scanning_started"},
-                headers={"X-Affinity-Token": rag.affinity_token},
-            )
-            return response
-        except Exception as e:
-            logging.error(f"Error POST /documents/scan: {str(e)}")
-            logging.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
-
-    @router.get("/scan-progress")
-    async def get_scan_progress(
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
-        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
-    ):
-        """
-        Get the current progress of the document scanning process.
-        """
-        try:
-            ai_access_token = extract_token_value(
-                ai_access_token, "Azure-AI-Access-Token"
-            )
-            storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
-            )
-            rag = initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            async with rag.progress_lock:
-                if X_Affinity_Token is None:
-                    response = JSONResponse(
-                        content=rag.scan_progress,
-                        headers={"X-Affinity-Token": rag.affinity_token},
-                    )
-                else:
-                    response = JSONResponse(
-                        content=rag.scan_progress,
-                        headers={"X-Affinity-Token": rag.affinity_token},
-                    )
-            return response
-        except Exception as e:
-            logging.error(f"Error GET /documents/scan-progress: {str(e)}")
-            logging.error(traceback.format_exc())
-            raise HTTPException(status_code=500, detail=str(e))
-
     @router.post(
         "/text", response_model=InsertResponse, dependencies=[Depends(optional_api_key)]
     )
@@ -616,6 +512,7 @@ def create_document_routes(
             await pipeline_index_texts(
                 rag,
                 [request.text],
+                [request.id] if request.id else None,
                 ai_access_token,
                 storage_account_url,
                 storage_container_name,
@@ -682,6 +579,7 @@ def create_document_routes(
             await pipeline_index_texts(
                 rag,
                 request.texts,
+                request.ids if request.ids else None,
                 ai_access_token,
                 storage_account_url,
                 storage_container_name,
@@ -910,7 +808,10 @@ def create_document_routes(
                             metadata=doc_status.metadata,
                         )
                     )
-            return JSONResponse(content=response.model_dump(), headers={"X-Affinity-Token": rag.affinity_token})
+            return JSONResponse(
+                content=response.model_dump(),
+                headers={"X-Affinity-Token": rag.affinity_token},
+            )
         except Exception as e:
             logging.error(f"Error GET /documents: {str(e)}")
             logging.error(traceback.format_exc())

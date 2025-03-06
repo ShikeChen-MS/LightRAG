@@ -173,7 +173,9 @@ def create_query_routes(
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
         """
         try:
-            ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+            ai_access_token = extract_token_value(
+                ai_access_token, "Azure-AI-Access-Token"
+            )
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
@@ -201,12 +203,15 @@ def create_query_routes(
                 storage_account_url,
                 storage_container_name,
                 lightrag_token,
-                param=param
+                param=param,
             )
 
             # If response is a string (e.g. cache hit), return directly
             if isinstance(response, str):
-                return QueryResponse(response=response)
+                return JSONResponse(
+                    content={"response": response},
+                    headers={"X-Affinity-Token": rag.affinity_token},
+                )
 
             if isinstance(response, dict):
                 result = json.dumps(response, indent=2)
@@ -238,7 +243,9 @@ def create_query_routes(
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
         """
         try:
-            ai_access_token = extract_token_value(ai_access_token, "Azure-AI-Access-Token")
+            ai_access_token = extract_token_value(
+                ai_access_token, "Azure-AI-Access-Token"
+            )
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
@@ -266,7 +273,7 @@ def create_query_routes(
                 storage_account_url,
                 storage_container_name,
                 lightrag_token,
-                param=param
+                param=param,
             )
             from fastapi.responses import StreamingResponse
 

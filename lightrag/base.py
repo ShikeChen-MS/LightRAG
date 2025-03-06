@@ -126,10 +126,8 @@ class BaseVectorStorage(StorageNameSpace, ABC):
 
     @abstractmethod
     async def query(
-            self,
-            ai_access_token: str,
-            query: str,
-            top_k: int) -> list[dict[str, Any]]:
+        self, ai_access_token: str, query: str, top_k: int
+    ) -> list[dict[str, Any]]:
         """Query the vector storage and retrieve top_k results."""
 
     @abstractmethod
@@ -268,6 +266,7 @@ class DocProcessingStatus:
     def to_json(self) -> str:
         """Convert the DocProcessingStatus instance to JSON"""
         return json.dumps(asdict(self), default=str)
+
 
 @dataclass
 class DocStatusStorage(StorageNameSpace, ABC):
