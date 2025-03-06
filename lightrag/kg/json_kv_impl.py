@@ -141,11 +141,11 @@ class JsonKVStorage(BaseKVStorage):
         self._data = {}
 
     async def delete(
-            self,
-            storage_account_url: str,
-            storage_container_name: str,
-            access_token: LightRagTokenCredential,
-            ids: list[str]
+        self,
+        storage_account_url: str,
+        storage_container_name: str,
+        access_token: LightRagTokenCredential,
+        ids: list[str],
     ) -> None:
         for doc_id in ids:
             self._data.pop(doc_id, None)

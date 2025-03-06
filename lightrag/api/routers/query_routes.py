@@ -155,9 +155,7 @@ def create_query_routes(
 ):
     optional_api_key = get_api_key_dependency(api_key)
 
-    @router.delete(
-        "/query/cache", dependencies=[Depends(optional_api_key)]
-    )
+    @router.delete("/query/cache", dependencies=[Depends(optional_api_key)])
     async def clear_query_cache(
         storage_account_url: str = Header(alias="Storage_Account_Url"),
         storage_container_name: str = Header(alias="Storage_Container_Name"),
@@ -196,7 +194,7 @@ def create_query_routes(
                 account_url=storage_account_url, credential=lightrag_token
             )
             container_client = blob_client.get_container_client(storage_container_name)
-            container_client.get_container_properties()# this is to check if the container exists and authentication is valid
+            container_client.get_container_properties()  # this is to check if the container exists and authentication is valid
             lease = container_client.acquire_lease()
             blobs_list = container_client.list_blobs()
             file_name = f"{rag.working_dir}/data/kv_store_llm_response_cache.json"
@@ -224,9 +222,6 @@ def create_query_routes(
                 lease.release()
             if blob_lease:
                 blob_lease.release()
-
-
-
 
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
