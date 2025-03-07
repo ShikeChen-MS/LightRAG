@@ -7,9 +7,11 @@ from fastapi import (
     Depends,
     Header,
 )
+import uvicorn
 from lightrag.api.rag_instance_manager import RAGInstanceManager
 import os
 import logging
+import logging.config
 import configparser
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -56,7 +58,7 @@ class AccessLogFilter(logging.Filter):
     def __init__(self):
         super().__init__()
         # Define paths to be filtered
-        self.filtered_paths = ["/documents", "/health", "/webui/"]
+        self.filtered_paths = ["/documents", "/health", "/query", "/graph"]
 
     def filter(self, record):
         try:
@@ -65,15 +67,12 @@ class AccessLogFilter(logging.Filter):
             if len(record.args) < 5:
                 return True
 
-            method = record.args[1]
             path = record.args[2]
             status = record.args[4]
-            # print(f"Debug - Method: {method}, Path: {path}, Status: {status}")
-            # print(f"Debug - Filtered paths: {self.filtered_paths}")
 
+            # to control log file size, ignore all successful requests
             if (
-                method == "GET"
-                and (status == 200 or status == 304)
+                status == 200
                 and path in self.filtered_paths
             ):
                 return False
@@ -106,8 +105,13 @@ def create_app(args, rag_instance_manager):
             raise Exception(f"SSL key file not found: {args.ssl_keyfile}")
 
     # Setup logging
+    log_file = "lightrag_server.log"
     logging.basicConfig(
-        format="%(levelname)s:%(message)s", level=getattr(logging, args.log_level)
+        format="%(levelname)s:%(message)s",
+        level=getattr(logging, args.log_level),
+        handlers=[
+            logging.FileHandler(log_file)
+        ],
     )
 
     # Check if API key is provided either through env var or args
@@ -157,8 +161,11 @@ def create_app(args, rag_instance_manager):
 
     # Add routes
     app.include_router(create_document_routes(rag_instance_manager, api_key))
+    logging.info("Document routers loaded...")
     app.include_router(create_query_routes(rag_instance_manager, api_key, args.top_k))
+    logging.info("Query routers loaded...")
     app.include_router(create_graph_routes(rag_instance_manager, api_key))
+    logging.info("Graph routers loaded...")
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
@@ -231,8 +238,6 @@ def create_app(args, rag_instance_manager):
 def main():
     args = parse_args()
     rag_instance_manager = RAGInstanceManager(args=args)
-    import uvicorn
-    import logging.config
 
     # Configure uvicorn logging
     logging.config.dictConfig(
@@ -242,27 +247,45 @@ def main():
             "formatters": {
                 "default": {
                     "format": "%(levelname)s: %(message)s",
+                    "datefmt": "%Y-%m-%d %H:%M:%S"
                 },
             },
             "handlers": {
-                "default": {
+                "file": {
+                    "class": "logging.FileHandler",
                     "formatter": "default",
-                    "class": "logging.StreamHandler",
-                    "stream": "ext://sys.stderr",
+                    "filename": "lightrag_server.log",
+                    "mode": "a",
+                    "encoding": "utf-8"
                 },
             },
+            "root": {
+                "handlers": ["file"],
+                "level": "INFO",
+            },
             "loggers": {
-                "uvicorn.access": {
-                    "handlers": ["default"],
+                "uvicorn": {
+                    "handlers": ["file"],
                     "level": "INFO",
                     "propagate": False,
                 },
-            },
+                "uvicorn.error": {
+                    "handlers": ["file"],
+                    "level": "INFO",
+                    "propagate": False,
+                },
+                "uvicorn.access": {
+                    "handlers": ["file"],
+                    "level": "INFO",
+                    "propagate": False,
+
+                },
+            }
         }
     )
 
     # Add filter to uvicorn access logger
-    uvicorn_access_logger = logging.getLogger("uvicorn.access")
+    uvicorn_access_logger = logging.getLogger("uvicorn")
     uvicorn_access_logger.addFilter(AccessLogFilter())
 
     app = create_app(args, rag_instance_manager)
