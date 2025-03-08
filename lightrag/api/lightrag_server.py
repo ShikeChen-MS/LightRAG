@@ -10,7 +10,6 @@ from fastapi import (
 import uvicorn
 from lightrag.api.rag_instance_manager import RAGInstanceManager
 import os
-import logging
 import logging.config
 import configparser
 from fastapi.middleware.cors import CORSMiddleware
@@ -30,7 +29,6 @@ import logging
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
-import azure.storage.blob
 # TODO: following imports are a temporary workaround for long load time
 # TODO: on graph db related module especially networkx and graspologic.
 # TODO: This expected to be fix after migrate to Azure Database server for PostgreSQL.
@@ -40,6 +38,7 @@ import lightrag.kg.json_doc_status_impl
 import lightrag.kg.json_kv_impl
 import lightrag.kg.nano_vector_db_impl
 import lightrag.kg.networkx_impl
+import lightrag.llm.azure_openai
 
 
 # Load environment variables
@@ -51,25 +50,6 @@ except Exception as e:
 # Initialize config parser
 config = configparser.ConfigParser()
 config.read("config.ini")
-
-
-class AccessLogFilter(logging.Filter):
-    def __init__(self):
-        super().__init__()
-
-    def filter(self, record):
-        try:
-            if not hasattr(record, "args") or not isinstance(record.args, tuple):
-                return True
-            if len(record.args) < 5:
-                return True
-            status = record.args[4]
-            # to control log file size, ignore all successful requests
-            if status == 200:
-                return False
-            return True
-        except Exception:
-            return True
 
 
 def create_app(args, rag_instance_manager):
@@ -224,7 +204,7 @@ def main():
             "disable_existing_loggers": True,
             "formatters": {
                 "default": {
-                    "format": "%(levelname)s: %(message)s",
+                    "format": "[%(asctime)s][%(levelname)s]: %(message)s",
                     "datefmt": "%Y-%m-%d %H:%M:%S"
                 },
             },
