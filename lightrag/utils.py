@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(override=True)
 
+
 class UnlimitedSemaphore:
     """A context manager that allows unlimited access."""
 
@@ -33,6 +34,7 @@ class UnlimitedSemaphore:
 ENCODER = None
 
 statistic_data = {"llm_call": 0, "llm_cache": 0, "embed_call": 0}
+
 
 @dataclass
 class EmbeddingFunc:
@@ -447,7 +449,9 @@ async def get_best_cached_response(
                         "threshold": similarity_threshold,
                     }
                     logging.debug(json.dumps(log_data, ensure_ascii=False))
-                    logging.info(f"Cache rejected by LLM(mode:{mode} tpye:{cache_type})")
+                    logging.info(
+                        f"Cache rejected by LLM(mode:{mode} tpye:{cache_type})"
+                    )
                     return None
             except Exception as e:  # Catch all possible exceptions
                 logging.warning(f"LLM similarity check failed: {e}")

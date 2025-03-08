@@ -3,7 +3,6 @@ import asyncio
 import configparser
 import os
 import threading
-import traceback
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -46,7 +45,7 @@ from .utils import (
     convert_response_to_json,
     encode_string_by_tiktoken,
     lazy_external_import,
-    limit_async_func_call
+    limit_async_func_call,
 )
 from .types import KnowledgeGraph
 from dotenv import load_dotenv
@@ -726,7 +725,6 @@ class LightRAG:
                         )
                     except Exception as e:
                         logging.error(f"Failed to process document {doc_id}: {str(e)}")
-                        traceback.print_exc()
                         await self.doc_status.upsert(
                             {
                                 doc_id: {
@@ -1339,7 +1337,9 @@ class LightRAG:
                     for dp in self.relationships_vdb.client_storage["data"]
                     if dp.get("source_id") == chunk_id
                 ]
-                logging.debug(f"Chunk {chunk_id} has {len(relations)} related relations")
+                logging.debug(
+                    f"Chunk {chunk_id} has {len(relations)} related relations"
+                )
 
             # Continue with the original deletion process...
 

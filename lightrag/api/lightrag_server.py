@@ -2,6 +2,7 @@
 LightRAG FastAPI Server
 """
 
+import json
 from fastapi import (
     FastAPI,
     Depends,
@@ -29,6 +30,7 @@ import logging
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
+
 # TODO: following imports are a temporary workaround for long load time
 # TODO: on graph db related module especially networkx and graspologic.
 # TODO: This expected to be fix after migrate to Azure Database server for PostgreSQL.
@@ -63,7 +65,6 @@ def create_app(args, rag_instance_manager):
     for arg in vars(args):
         logging.info(f"{str(arg)}: {str(getattr(args, arg))}")
     logging.info("################################################################")
-
     # Add SSL validation
     if args.ssl:
         if not args.ssl_certfile or not args.ssl_keyfile:
@@ -196,62 +197,15 @@ def create_app(args, rag_instance_manager):
 def main():
     args = parse_args()
     rag_instance_manager = RAGInstanceManager(args=args)
-
-    # Configure uvicorn logging
-    logging.config.dictConfig(
-        {
-            "version": 1,
-            "disable_existing_loggers": True,
-            "formatters": {
-                "default": {
-                    "format": "[%(asctime)s][%(levelname)s]: %(message)s",
-                    "datefmt": "%Y-%m-%d %H:%M:%S"
-                },
-            },
-            "handlers": {
-                "file": {
-                    "class": "logging.FileHandler",
-                    "formatter": "default",
-                    "filename": "lightrag_server.log",
-                    "mode": "a",
-                    "encoding": "utf-8"
-                },
-            },
-            "root": {
-                "handlers": ["file"],
-                "level": "INFO",
-            },
-            "loggers": {
-                "azure": {
-                    "handlers": ["file"],
-                    "level": "WARNING",
-                    "propagate": False,
-                },
-                "httpx":{
-                    "handlers": ["file"],
-                    "level": "WARNING",
-                    "propagate": False,
-                },
-                "uvicorn": {
-                    "handlers": ["file"],
-                    "level": "WARNING",
-                    "propagate": False,
-                },
-                "uvicorn.error": {
-                    "handlers": ["file"],
-                    "level": "INFO",
-                    "propagate": False,
-                },
-                "uvicorn.access": {
-                    "handlers": ["file"],
-                    "level": "INFO",
-                    "propagate": False,
-
-                },
-            }
-        }
-    )
-
+    current_dir = os.path.dirname(__file__)
+    logging_config_path = os.path.join(current_dir, "logging_config.json")
+    with open(logging_config_path, "r") as f:
+        logging_configs = json.load(f)
+        logging_configs["handlers"]["file"]["filename"] = os.path.join(
+            current_dir, logging_configs["handlers"]["file"]["filename"]
+        )
+        # Configure uvicorn logging
+        logging.config.dictConfig(logging_configs)
     app = create_app(args, rag_instance_manager)
     uvicorn_config = {
         "app": app,

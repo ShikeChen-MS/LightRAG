@@ -349,4 +349,3 @@ def extract_token_value(authorization: str, header_name: str) -> str:
             status_code=401, detail=f"Invalid header {header_name} format"
         )
     return token_parts[1]
-
