@@ -9,7 +9,7 @@ from fastapi import (
     Header,
 )
 import uvicorn
-from lightrag.api.rag_instance_manager import RAGInstanceManager
+from .rag_instance_manager import RAGInstanceManager
 import os
 import logging.config
 import configparser
@@ -41,6 +41,9 @@ import lightrag.kg.json_kv_impl
 import lightrag.kg.nano_vector_db_impl
 import lightrag.kg.networkx_impl
 import lightrag.llm.azure_openai
+import lightrag.lightrag
+import lightrag.az_token_credential
+import lightrag.base
 
 
 # Load environment variables

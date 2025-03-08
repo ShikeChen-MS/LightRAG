@@ -170,7 +170,7 @@ class LightRAG:
             # Verify storage implementation compatibility
             verify_storage_implementation(storage_type, storage_name)
             # Check environment variables
-            # self.check_storage_env_vars(storage_name)
+            self.check_storage_env_vars(storage_name)
 
         # Ensure vector_db_storage_cls_kwargs has required fields
         self.vector_db_storage_cls_kwargs = {

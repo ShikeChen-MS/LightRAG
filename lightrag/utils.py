@@ -7,6 +7,8 @@ import json
 import logging
 import os
 import re
+import hashlib
+import inspect
 from dataclasses import dataclass
 from functools import wraps
 from hashlib import md5
@@ -92,7 +94,6 @@ def compute_args_hash(*args: Any, cache_type: str | None = None) -> str:
     Returns:
         str: Hash string
     """
-    import hashlib
 
     # Convert all arguments to strings and join them
     args_str = "".join([str(arg) for arg in args])
@@ -731,8 +732,6 @@ def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
 
 def lazy_external_import(module_name: str, class_name: str) -> Callable[..., Any]:
     """Lazily import a class from an external module based on the package of the caller."""
-    # Get the caller's module and package
-    import inspect
 
     caller_frame = inspect.currentframe().f_back
     module = inspect.getmodule(caller_frame)
