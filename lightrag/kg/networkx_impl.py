@@ -5,9 +5,7 @@ import numpy as np
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from ..az_token_credential import LightRagTokenCredential
 from ..types import KnowledgeGraph, KnowledgeGraphNode, KnowledgeGraphEdge
-from ..utils import (
-    logger,
-)
+import logging
 from ..base import (
     BaseGraphStorage,
 )
@@ -33,7 +31,7 @@ class NetworkXStorage(BaseGraphStorage):
 
     @staticmethod
     def write_nx_graph(graph: nx.Graph, file_name):
-        logger.info(
+        logging.info(
             f"Writing graph with {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges"
         )
         nx.write_graphml(graph, file_name)
@@ -89,7 +87,7 @@ class NetworkXStorage(BaseGraphStorage):
             blob_list = container_client.list_blob_names()
             blob_name = f"{self.global_config["working_dir"]}/data/graph_{self.namespace}.graphml"
             if not blob_name in blob_list:
-                logger.info(f"Creating new graph_{self.namespace}.graphml")
+                logging.info(f"Creating new graph_{self.namespace}.graphml")
                 self._graph = nx.Graph()
                 linefeed = chr(10)
                 content = linefeed.join(nx.generate_graphml(self._graph))
@@ -112,7 +110,7 @@ class NetworkXStorage(BaseGraphStorage):
             preloaded_graph = nx.parse_graphml(content_str)
             self._graph = preloaded_graph
         except Exception as e:
-            logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
+            logging.warning(f"Failed to load graph from Azure Blob Storage: {e}")
             raise
         finally:
             if lease:
@@ -153,7 +151,7 @@ class NetworkXStorage(BaseGraphStorage):
             lease.release()
             lease = None
         except Exception as e:
-            logger.warning(f"Failed to save graph to Azure Blob Storage: {e}")
+            logging.warning(f"Failed to save graph to Azure Blob Storage: {e}")
             raise
         finally:
             if lease:
@@ -197,9 +195,9 @@ class NetworkXStorage(BaseGraphStorage):
     async def delete_node(self, node_id: str) -> None:
         if self._graph.has_node(node_id):
             self._graph.remove_node(node_id)
-            logger.info(f"Node {node_id} deleted from the graph.")
+            logging.info(f"Node {node_id} deleted from the graph.")
         else:
-            logger.warning(f"Node {node_id} not found in the graph for deletion.")
+            logging.warning(f"Node {node_id} not found in the graph for deletion.")
 
     async def embed_nodes(
         self, algorithm: str
@@ -282,7 +280,7 @@ class NetworkXStorage(BaseGraphStorage):
                     nodes_to_explore.append(n)
 
             if not nodes_to_explore:
-                logger.warning(f"No nodes found with label {node_label}")
+                logging.warning(f"No nodes found with label {node_label}")
                 return result
 
             # Get subgraph using ego_graph
@@ -299,7 +297,7 @@ class NetworkXStorage(BaseGraphStorage):
             top_node_ids = [node[0] for node in top_nodes]
             # Create new subgraph with only top nodes
             subgraph = subgraph.subgraph(top_node_ids)
-            logger.info(
+            logging.info(
                 f"Reduced graph from {origin_nodes} nodes to {max_graph_nodes} nodes (depth={max_depth})"
             )
 
@@ -348,9 +346,7 @@ class NetworkXStorage(BaseGraphStorage):
             )
             seen_edges.add(edge_id)
 
-        # logger.info(result.edges)
-
-        logger.info(
+        logging.info(
             f"Subgraph query successful | Node count: {len(result.nodes)} | Edge count: {len(result.edges)}"
         )
         return result

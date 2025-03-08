@@ -2,15 +2,12 @@ import asyncio
 from abc import ABC
 from io import BytesIO
 from typing import Any, final
-from dataclasses import dataclass
 import numpy as np
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from ..az_token_credential import LightRagTokenCredential
 import time
-from ..utils import (
-    logger,
-    compute_mdhash_id,
-)
+from ..utils import compute_mdhash_id
+import logging
 from ..base import (
     BaseVectorStorage,
 )
@@ -62,7 +59,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 f"{self.global_config["working_dir"]}/data/vdb_{self.namespace}.json"
             )
             if not blob_name in blob_list:
-                logger.info(f"Creating new vdb_{self.namespace}.json")
+                logging.info(f"Creating new vdb_{self.namespace}.json")
                 self._client = NanoVectorDB(self.embedding_func.embedding_dim)
                 json_data = self._client.save()
                 json_bytes = BytesIO(json_data.encode("utf-8"))
@@ -83,7 +80,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 self.embedding_func.embedding_dim, storage_data=content_str
             )
         except Exception as e:
-            logger.warning(
+            logging.warning(
                 f"Failed to load vector database from Azure Blob Storage: {e}"
             )
             raise
@@ -100,7 +97,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
     async def upsert(
         self, data: dict[str, dict[str, Any]], ai_access_token: str
     ) -> None:
-        logger.info(f"Inserting {len(data)} to {self.namespace}")
+        logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
 
@@ -132,7 +129,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             return results
         else:
             # sometimes the embedding is not returned correctly. just log it.
-            logger.error(
+            logging.error(
                 f"embedding is not 1-1 with data, {len(embeddings)} != {len(list_data)}"
             )
 
@@ -169,26 +166,26 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
         """
         try:
             self._client.delete(ids)
-            logger.info(
+            logging.info(
                 f"Successfully deleted {len(ids)} vectors from {self.namespace}"
             )
         except Exception as e:
-            logger.error(f"Error while deleting vectors from {self.namespace}: {e}")
+            logging.error(f"Error while deleting vectors from {self.namespace}: {e}")
 
     async def delete_entity(self, entity_name: str) -> None:
         try:
             entity_id = compute_mdhash_id(entity_name, prefix="ent-")
-            logger.debug(
+            logging.debug(
                 f"Attempting to delete entity {entity_name} with ID {entity_id}"
             )
             # Check if the entity exists
             if self._client.get([entity_id]):
                 await self.delete([entity_id])
-                logger.debug(f"Successfully deleted entity {entity_name}")
+                logging.debug(f"Successfully deleted entity {entity_name}")
             else:
-                logger.debug(f"Entity {entity_name} not found in storage")
+                logging.debug(f"Entity {entity_name} not found in storage")
         except Exception as e:
-            logger.error(f"Error deleting entity {entity_name}: {e}")
+            logging.error(f"Error deleting entity {entity_name}: {e}")
 
     async def delete_entity_relation(self, entity_name: str) -> None:
         try:
@@ -197,18 +194,18 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
                 for dp in self.client_storage["data"]
                 if dp["src_id"] == entity_name or dp["tgt_id"] == entity_name
             ]
-            logger.debug(f"Found {len(relations)} relations for entity {entity_name}")
+            logging.debug(f"Found {len(relations)} relations for entity {entity_name}")
             ids_to_delete = [relation["__id__"] for relation in relations]
 
             if ids_to_delete:
                 await self.delete(ids_to_delete)
-                logger.debug(
+                logging.debug(
                     f"Deleted {len(ids_to_delete)} relations for {entity_name}"
                 )
             else:
-                logger.debug(f"No relations found for entity {entity_name}")
+                logging.debug(f"No relations found for entity {entity_name}")
         except Exception as e:
-            logger.error(f"Error deleting relations for {entity_name}: {e}")
+            logging.error(f"Error deleting relations for {entity_name}: {e}")
 
     async def index_done_callback(
         self,
@@ -242,7 +239,7 @@ class NanoVectorDBStorage(BaseVectorStorage, ABC):
             lease.release()
             lease = None
         except Exception as e:
-            logger.error(f"Failed to save graph to Azure Blob Storage: {e}")
+            logging.error(f"Failed to save graph to Azure Blob Storage: {e}")
             raise
         finally:
             if lease:

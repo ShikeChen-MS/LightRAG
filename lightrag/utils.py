@@ -20,41 +20,6 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv(override=True)
 
-
-VERBOSE_DEBUG = os.getenv("VERBOSE", "false").lower() == "true"
-
-
-def verbose_debug(msg: str, *args, **kwargs):
-    """Function for outputting detailed debug information.
-    When VERBOSE_DEBUG=True, outputs the complete message.
-    When VERBOSE_DEBUG=False, outputs only the first 50 characters.
-
-    Args:
-        msg: The message format string
-        *args: Arguments to be formatted into the message
-        **kwargs: Keyword arguments passed to logger.debug()
-    """
-    if VERBOSE_DEBUG:
-        logger.debug(msg, *args, **kwargs)
-    else:
-        # Format the message with args first
-        if args:
-            formatted_msg = msg % args
-        else:
-            formatted_msg = msg
-        # Then truncate the formatted message
-        truncated_msg = (
-            formatted_msg[:50] + "..." if len(formatted_msg) > 50 else formatted_msg
-        )
-        logger.debug(truncated_msg, **kwargs)
-
-
-def set_verbose_debug(enabled: bool):
-    """Enable or disable verbose debug output"""
-    global VERBOSE_DEBUG
-    VERBOSE_DEBUG = enabled
-
-
 class UnlimitedSemaphore:
     """A context manager that allows unlimited access."""
 
@@ -68,33 +33,6 @@ class UnlimitedSemaphore:
 ENCODER = None
 
 statistic_data = {"llm_call": 0, "llm_cache": 0, "embed_call": 0}
-
-logger = logging.getLogger("lightrag")
-
-# Set httpx logging level to WARNING
-logging.getLogger("httpx").setLevel(logging.WARNING)
-
-
-def set_logger(log_file: str, level: int = logging.DEBUG):
-    """Set up file logging with the specified level.
-
-    Args:
-        log_file: Path to the log file
-        level: Logging level (e.g. logging.DEBUG, logging.INFO)
-    """
-    logger.setLevel(level)
-
-    file_handler = logging.FileHandler(log_file, encoding="utf-8")
-    file_handler.setLevel(level)
-
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    file_handler.setFormatter(formatter)
-
-    if not logger.handlers:
-        logger.addHandler(file_handler)
-
 
 @dataclass
 class EmbeddingFunc:
@@ -140,7 +78,7 @@ def convert_response_to_json(response: str) -> dict[str, Any]:
         data = json.loads(json_str)
         return data
     except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON: {json_str}")
+        logging.error(f"Failed to parse JSON: {json_str}")
         raise e from None
 
 
@@ -432,7 +370,7 @@ async def get_best_cached_response(
     original_prompt=None,
     cache_type=None,
 ) -> str | None:
-    logger.debug(
+    logging.debug(
         f"get_best_cached_response:  mode={mode} cache_type={cache_type} use_llm_check={use_llm_check}"
     )
     mode_cache = await hashing_kv.get_by_id(mode)
@@ -508,11 +446,11 @@ async def get_best_cached_response(
                         "similarity_score": round(best_similarity, 4),
                         "threshold": similarity_threshold,
                     }
-                    logger.debug(json.dumps(log_data, ensure_ascii=False))
-                    logger.info(f"Cache rejected by LLM(mode:{mode} tpye:{cache_type})")
+                    logging.debug(json.dumps(log_data, ensure_ascii=False))
+                    logging.info(f"Cache rejected by LLM(mode:{mode} tpye:{cache_type})")
                     return None
             except Exception as e:  # Catch all possible exceptions
-                logger.warning(f"LLM similarity check failed: {e}")
+                logging.warning(f"LLM similarity check failed: {e}")
                 return None  # Return None directly when LLM check fails
 
         prompt_display = (
@@ -526,7 +464,7 @@ async def get_best_cached_response(
             "cache_id": best_cache_id,
             "original_prompt": prompt_display,
         }
-        logger.debug(json.dumps(log_data, ensure_ascii=False))
+        logging.debug(json.dumps(log_data, ensure_ascii=False))
         return best_response
     return None
 
@@ -607,11 +545,11 @@ async def handle_cache(
                 cache_type=cache_type,
             )
             if best_cached_response is not None:
-                logger.info(f"Embedding cached hit(mode:{mode} type:{cache_type})")
+                logging.info(f"Embedding cached hit(mode:{mode} type:{cache_type})")
                 return best_cached_response, None, None, None
             else:
                 # if caching keyword embedding is enabled, return the quantized embedding for saving it latter
-                logger.info(f"Embedding cached missed(mode:{mode} type:{cache_type})")
+                logging.info(f"Embedding cached missed(mode:{mode} type:{cache_type})")
                 return None, quantized, min_val, max_val
 
     # For default mode or is_embedding_cache_enabled is False, use regular cache
@@ -621,10 +559,10 @@ async def handle_cache(
     else:
         mode_cache = await hashing_kv.get_by_id(mode) or {}
     if args_hash in mode_cache:
-        logger.info(f"Non-embedding cached hit(mode:{mode} type:{cache_type})")
+        logging.info(f"Non-embedding cached hit(mode:{mode} type:{cache_type})")
         return mode_cache[args_hash]["return"], None, None, None
 
-    logger.info(f"Non-embedding cached missed(mode:{mode} type:{cache_type})")
+    logging.info(f"Non-embedding cached missed(mode:{mode} type:{cache_type})")
     return None, None, None, None
 
 
@@ -781,7 +719,7 @@ def always_get_an_event_loop() -> asyncio.AbstractEventLoop:
 
     except RuntimeError:
         # If no event loop exists or it is closed, create a new one
-        logger.info("Creating a new event loop in main thread.")
+        logging.info("Creating a new event loop in main thread.")
         new_loop = asyncio.new_event_loop()
         asyncio.set_event_loop(new_loop)
         return new_loop

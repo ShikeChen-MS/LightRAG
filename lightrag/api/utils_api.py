@@ -6,10 +6,7 @@ import asyncio
 import os
 import argparse
 from typing import Optional
-import sys
-from ascii_colors import ASCIIColors
 from azure.storage.blob import BlobLeaseClient, BlobClient, ContainerClient
-from . import __api_version__
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
@@ -17,7 +14,7 @@ from starlette.status import HTTP_403_FORBIDDEN
 from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
 from ..base import InitializeStatus
-from ..utils import logger
+import logging
 
 # Load environment variables
 load_dotenv(override=True)
@@ -327,12 +324,12 @@ async def try_get_container_lease(
         except Exception as e:
             retry_count += 1
             lease = None
-            logger.warning(
+            logging.warning(
                 f"Failed to acquire lease, error detail: {str(e)}, retrying in 3 seconds..."
             )
             await asyncio.sleep(3)
     if lease is None:
-        logger.error(f"Failed to acquire lease after 50 retries, error....")
+        logging.error(f"Failed to acquire lease after 50 retries, error....")
         raise HTTPException(
             status_code=500, detail="Failed to acquire lease after 50 retries"
         )
@@ -353,164 +350,3 @@ def extract_token_value(authorization: str, header_name: str) -> str:
         )
     return token_parts[1]
 
-
-def display_splash_screen(args: argparse.Namespace) -> None:
-    """
-    Display a colorful splash screen showing LightRAG server configuration
-
-    Args:
-        args: Parsed command line arguments
-    """
-    # Banner
-    ASCIIColors.cyan(
-        f"""
-    ╔══════════════════════════════════════════════════════════════╗
-    ║                   🚀 LightRAG Server v{__api_version__}                  ║
-    ║          Fast, Lightweight RAG Server Implementation         ║
-    ╚══════════════════════════════════════════════════════════════╝
-    """
-    )
-
-    # Server Configuration
-    ASCIIColors.magenta("\n📡 Server Configuration:")
-    ASCIIColors.white("    ├─ Host: ", end="")
-    ASCIIColors.yellow(f"{args.host}")
-    ASCIIColors.white("    ├─ Port: ", end="")
-    ASCIIColors.yellow(f"{args.port}")
-    ASCIIColors.white("    ├─ CORS Origins: ", end="")
-    ASCIIColors.yellow(f"{os.getenv('CORS_ORIGINS', '*')}")
-    ASCIIColors.white("    ├─ SSL Enabled: ", end="")
-    ASCIIColors.yellow(f"{args.ssl}")
-    ASCIIColors.white("    └─ API Key: ", end="")
-    ASCIIColors.yellow("Set" if args.key else "Not Set")
-    if args.ssl:
-        ASCIIColors.white("    ├─ SSL Cert: ", end="")
-        ASCIIColors.yellow(f"{args.ssl_certfile}")
-        ASCIIColors.white("    └─ SSL Key: ", end="")
-        ASCIIColors.yellow(f"{args.ssl_keyfile}")
-
-    # LLM Configuration
-    ASCIIColors.magenta("\n🤖 LLM Configuration:")
-    ASCIIColors.white("    ├─ Host: ", end="")
-    ASCIIColors.yellow(f"{args.llm_binding_host}")
-    ASCIIColors.white("    └─ Model: ", end="")
-    ASCIIColors.yellow(f"{args.llm_model}")
-
-    # Embedding Configuration
-    ASCIIColors.magenta("\n📊 Embedding Configuration:")
-    ASCIIColors.white("    ├─ Host: ", end="")
-    ASCIIColors.yellow(f"{args.embedding_binding_host}")
-    ASCIIColors.white("    ├─ Model: ", end="")
-    ASCIIColors.yellow(f"{args.embedding_model}")
-    ASCIIColors.white("    └─ Dimensions: ", end="")
-    ASCIIColors.yellow(f"{args.embedding_dim}")
-
-    # RAG Configuration
-    ASCIIColors.magenta("\n⚙️ RAG Configuration:")
-    ASCIIColors.white("    ├─ Max Async Operations: ", end="")
-    ASCIIColors.yellow(f"{args.max_async}")
-    ASCIIColors.white("    ├─ Max Tokens: ", end="")
-    ASCIIColors.yellow(f"{args.max_tokens}")
-    ASCIIColors.white("    ├─ Max Embed Tokens: ", end="")
-    ASCIIColors.yellow(f"{args.max_embed_tokens}")
-    ASCIIColors.white("    ├─ Chunk Size: ", end="")
-    ASCIIColors.yellow(f"{args.chunk_size}")
-    ASCIIColors.white("    ├─ Chunk Overlap Size: ", end="")
-    ASCIIColors.yellow(f"{args.chunk_overlap_size}")
-    ASCIIColors.white("    ├─ History Turns: ", end="")
-    ASCIIColors.yellow(f"{args.history_turns}")
-    ASCIIColors.white("    ├─ Cosine Threshold: ", end="")
-    ASCIIColors.yellow(f"{args.cosine_threshold}")
-    ASCIIColors.white("    └─ Top-K: ", end="")
-    ASCIIColors.yellow(f"{args.top_k}")
-
-    # System Configuration
-    ASCIIColors.magenta("\n💾 Storage Configuration:")
-    ASCIIColors.white("    ├─ KV Storage: ", end="")
-    ASCIIColors.yellow(f"{args.kv_storage}")
-    ASCIIColors.white("    ├─ Vector Storage: ", end="")
-    ASCIIColors.yellow(f"{args.vector_storage}")
-    ASCIIColors.white("    ├─ Graph Storage: ", end="")
-    ASCIIColors.yellow(f"{args.graph_storage}")
-    ASCIIColors.white("    └─ Document Status Storage: ", end="")
-    ASCIIColors.yellow(f"{args.doc_status_storage}")
-
-    # Server Status
-    ASCIIColors.green("\n✨ Server starting up...\n")
-
-    # Server Access Information
-    protocol = "https" if args.ssl else "http"
-    if args.host == "0.0.0.0":
-        ASCIIColors.magenta("\n🌐 Server Access Information:")
-        ASCIIColors.white("    ├─ Local Access: ", end="")
-        ASCIIColors.yellow(f"{protocol}://localhost:{args.port}")
-        ASCIIColors.white("    ├─ Remote Access: ", end="")
-        ASCIIColors.yellow(f"{protocol}://<your-ip-address>:{args.port}")
-        ASCIIColors.white("    ├─ API Documentation (local): ", end="")
-        ASCIIColors.yellow(f"{protocol}://localhost:{args.port}/docs")
-        ASCIIColors.white("    ├─ Alternative Documentation (local): ", end="")
-        ASCIIColors.yellow(f"{protocol}://localhost:{args.port}/redoc")
-        ASCIIColors.white("    └─ WebUI (local): ", end="")
-        ASCIIColors.yellow(f"{protocol}://localhost:{args.port}/webui")
-
-        ASCIIColors.yellow("\n📝 Note:")
-        ASCIIColors.white(
-            """    Since the server is running on 0.0.0.0:
-    - Use 'localhost' or '127.0.0.1' for local access
-    - Use your machine's IP address for remote access
-    - To find your IP address:
-      • Windows: Run 'ipconfig' in terminal
-      • Linux/Mac: Run 'ifconfig' or 'ip addr' in terminal
-    """
-        )
-    else:
-        base_url = f"{protocol}://{args.host}:{args.port}"
-        ASCIIColors.magenta("\n🌐 Server Access Information:")
-        ASCIIColors.white("    ├─ Base URL: ", end="")
-        ASCIIColors.yellow(f"{base_url}")
-        ASCIIColors.white("    ├─ API Documentation: ", end="")
-        ASCIIColors.yellow(f"{base_url}/docs")
-        ASCIIColors.white("    └─ Alternative Documentation: ", end="")
-        ASCIIColors.yellow(f"{base_url}/redoc")
-
-    # Usage Examples
-    ASCIIColors.magenta("\n📚 Quick Start Guide:")
-    ASCIIColors.cyan(
-        """
-    1. Access the Swagger UI:
-       Open your browser and navigate to the API documentation URL above
-
-    2. API Authentication:"""
-    )
-    if args.key:
-        ASCIIColors.cyan(
-            """       Add the following header to your requests:
-       X-API-Key: <your-api-key>
-    """
-        )
-    else:
-        ASCIIColors.cyan("       No authentication required\n")
-
-    ASCIIColors.cyan(
-        """    3. Basic Operations:
-       - POST /upload_document: Upload new documents to RAG
-       - POST /query: Query your document collection
-       - GET /collections: List available collections
-
-    4. Monitor the server:
-       - Check server logs for detailed operation information
-       - Use healthcheck endpoint: GET /health
-    """
-    )
-
-    # Security Notice
-    if args.key:
-        ASCIIColors.yellow("\n⚠️  Security Notice:")
-        ASCIIColors.white(
-            """    API Key authentication is enabled.
-    Make sure to include the X-API-Key header in all your requests.
-    """
-        )
-
-    # Ensure splash output flush to system log
-    sys.stdout.flush()

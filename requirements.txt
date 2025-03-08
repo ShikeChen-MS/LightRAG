@@ -1,6 +1,5 @@
 aiohttp
 aiofiles
-ascii_colors
 asyncpg
 configparser
 future

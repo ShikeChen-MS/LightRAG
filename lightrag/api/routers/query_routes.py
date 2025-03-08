@@ -22,7 +22,6 @@ from ..utils_api import (
     extract_token_value,
 )
 from pydantic import BaseModel, Field, field_validator
-from ascii_colors import trace_exception
 
 router = APIRouter(tags=["query"])
 
@@ -276,7 +275,6 @@ def create_query_routes(
                     headers={"X-Affinity-Token": rag.affinity_token},
                 )
         except Exception as e:
-            trace_exception(e)
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
@@ -355,7 +353,6 @@ def create_query_routes(
                 },
             )
         except Exception as e:
-            trace_exception(e)
             raise HTTPException(status_code=500, detail=str(e))
 
     return router

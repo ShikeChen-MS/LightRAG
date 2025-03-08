@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import List
 
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient
 from .az_token_credential import LightRagTokenCredential

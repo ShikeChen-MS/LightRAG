@@ -20,18 +20,17 @@ from dotenv import load_dotenv
 from .utils_api import (
     get_api_key_dependency,
     parse_args,
-    display_splash_screen,
     initialize_rag_with_header,
     wait_for_storage_initialization,
     get_lightrag_token_credential,
     extract_token_value,
 )
 from . import __api_version__
-from ..utils import logger
+import logging
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
-
+import azure.storage.blob
 # TODO: following imports are a temporary workaround for long load time
 # TODO: on graph db related module especially networkx and graspologic.
 # TODO: This expected to be fix after migrate to Azure Database server for PostgreSQL.
@@ -47,7 +46,7 @@ import lightrag.kg.networkx_impl
 try:
     load_dotenv(override=True)
 except Exception as e:
-    logger.warning(f"Failed to load .env file: {e}")
+    logging.warning(f"Failed to load .env file: {e}")
 
 # Initialize config parser
 config = configparser.ConfigParser()
@@ -57,8 +56,6 @@ config.read("config.ini")
 class AccessLogFilter(logging.Filter):
     def __init__(self):
         super().__init__()
-        # Define paths to be filtered
-        self.filtered_paths = ["/documents", "/health", "/query", "/graph"]
 
     def filter(self, record):
         try:
@@ -66,19 +63,11 @@ class AccessLogFilter(logging.Filter):
                 return True
             if len(record.args) < 5:
                 return True
-
-            path = record.args[2]
             status = record.args[4]
-
             # to control log file size, ignore all successful requests
-            if (
-                status == 200
-                and path in self.filtered_paths
-            ):
+            if status == 200:
                 return False
-
             return True
-
         except Exception:
             return True
 
@@ -88,10 +77,12 @@ def create_app(args, rag_instance_manager):
     global global_top_k
     global_top_k = args.top_k  # save top_k from args
 
-    # Initialize verbose debug setting
-    from lightrag.utils import set_verbose_debug
-
-    set_verbose_debug(args.verbose)
+    logging.info("LightRAG server starting...")
+    logging.info("Output all arguments collected...")
+    logging.info("################################################################")
+    for arg in vars(args):
+        logging.info(f"{str(arg)}: {str(getattr(args, arg))}")
+    logging.info("################################################################")
 
     # Add SSL validation
     if args.ssl:
@@ -103,16 +94,6 @@ def create_app(args, rag_instance_manager):
             raise Exception(f"SSL certificate file not found: {args.ssl_certfile}")
         if not os.path.exists(args.ssl_keyfile):
             raise Exception(f"SSL key file not found: {args.ssl_keyfile}")
-
-    # Setup logging
-    log_file = "lightrag_server.log"
-    logging.basicConfig(
-        format="%(levelname)s:%(message)s",
-        level=getattr(logging, args.log_level),
-        handlers=[
-            logging.FileHandler(log_file)
-        ],
-    )
 
     # Check if API key is provided either through env var or args
     api_key = os.getenv("LIGHTRAG_API_KEY") or args.key
@@ -161,11 +142,8 @@ def create_app(args, rag_instance_manager):
 
     # Add routes
     app.include_router(create_document_routes(rag_instance_manager, api_key))
-    logging.info("Document routers loaded...")
     app.include_router(create_query_routes(rag_instance_manager, api_key, args.top_k))
-    logging.info("Query routers loaded...")
     app.include_router(create_graph_routes(rag_instance_manager, api_key))
-    logging.info("Graph routers loaded...")
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
@@ -243,7 +221,7 @@ def main():
     logging.config.dictConfig(
         {
             "version": 1,
-            "disable_existing_loggers": False,
+            "disable_existing_loggers": True,
             "formatters": {
                 "default": {
                     "format": "%(levelname)s: %(message)s",
@@ -264,9 +242,19 @@ def main():
                 "level": "INFO",
             },
             "loggers": {
+                "azure": {
+                    "handlers": ["file"],
+                    "level": "WARNING",
+                    "propagate": False,
+                },
+                "httpx":{
+                    "handlers": ["file"],
+                    "level": "WARNING",
+                    "propagate": False,
+                },
                 "uvicorn": {
                     "handlers": ["file"],
-                    "level": "INFO",
+                    "level": "WARNING",
                     "propagate": False,
                 },
                 "uvicorn.error": {
@@ -284,12 +272,7 @@ def main():
         }
     )
 
-    # Add filter to uvicorn access logger
-    uvicorn_access_logger = logging.getLogger("uvicorn")
-    uvicorn_access_logger.addFilter(AccessLogFilter())
-
     app = create_app(args, rag_instance_manager)
-    display_splash_screen(args)
     uvicorn_config = {
         "app": app,
         "host": args.host,

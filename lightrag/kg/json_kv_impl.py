@@ -8,9 +8,7 @@ from ..az_token_credential import LightRagTokenCredential
 from ..base import (
     BaseKVStorage,
 )
-from ..utils import (
-    logger,
-)
+import logging
 from ..api.utils_api import try_get_container_lease
 
 
@@ -46,7 +44,7 @@ class JsonKVStorage(BaseKVStorage):
             blob_list = container_client.list_blob_names()
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             if not blob_name in blob_list:
-                logger.info(f"Creating new kv_store_{self.namespace}.json")
+                logging.info(f"Creating new kv_store_{self.namespace}.json")
                 self._data: dict[str, Any] = {}
                 json_data = json.dumps(self._data)
                 json_bytes = BytesIO(json_data.encode("utf-8"))
@@ -68,7 +66,7 @@ class JsonKVStorage(BaseKVStorage):
             content_str = content.decode("utf-8")
             self._data = json.loads(content_str)
         except Exception as e:
-            logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
+            logging.warning(f"Failed to load graph from Azure Blob Storage: {e}")
             raise
         finally:
             if lease:
@@ -106,7 +104,7 @@ class JsonKVStorage(BaseKVStorage):
             lease.release()
             lease = None
         except Exception as e:
-            logger.warning(f"Failed to upload graph to Azure Blob Storage: {e}")
+            logging.warning(f"Failed to upload graph to Azure Blob Storage: {e}")
             raise
         finally:
             if lease:
@@ -131,7 +129,7 @@ class JsonKVStorage(BaseKVStorage):
         return set(keys) - set(self._data.keys())
 
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
-        logger.info(f"Inserting {len(data)} to {self.namespace}")
+        logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
         left_data = {k: v for k, v in data.items() if k not in self._data}

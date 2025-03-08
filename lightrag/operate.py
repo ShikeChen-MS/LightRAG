@@ -4,9 +4,8 @@ import json
 import re
 from typing import Any, AsyncIterator
 from collections import Counter, defaultdict
-
+import logging
 from .utils import (
-    logger,
     clean_str,
     compute_mdhash_id,
     decode_tokens_by_tiktoken,
@@ -23,7 +22,6 @@ from .utils import (
     CacheData,
     statistic_data,
     get_conversation_turns,
-    verbose_debug,
 )
 from .base import (
     BaseGraphStorage,
@@ -129,7 +127,7 @@ async def _handle_entity_relation_summary(
         language=language,
     )
     use_prompt = prompt_template.format(**context_base)
-    logger.debug(f"Trigger summary: {entity_or_relation_name}")
+    logging.debug(f"Trigger summary: {entity_or_relation_name}")
     summary = await use_llm_func(
         ai_access_token, use_prompt, max_tokens=summary_max_tokens
     )
@@ -411,7 +409,7 @@ async def extract_entities(
                 force_llm_cache=True,
             )
             if cached_return:
-                logger.debug(f"Found cache for {arg_hash}")
+                logging.debug(f"Found cache for {arg_hash}")
                 statistic_data["llm_cache"] += 1
                 return cached_return
             statistic_data["llm_call"] += 1
@@ -505,7 +503,7 @@ async def extract_entities(
         processed_chunks += 1
         entities_count = len(maybe_nodes)
         relations_count = len(maybe_edges)
-        logger.info(
+        logging.info(
             f"  Chunk {processed_chunks}/{total_chunks}: extracted {entities_count} entities and {relations_count} relationships (deduplicated)"
         )
         return dict(maybe_nodes), dict(maybe_edges)
@@ -540,21 +538,17 @@ async def extract_entities(
     )
 
     if not (all_entities_data or all_relationships_data):
-        logger.info("Didn't extract any entities and relationships.")
+        logging.info("Didn't extract any entities and relationships.")
         return
 
     if not all_entities_data:
-        logger.info("Didn't extract any entities")
+        logging.info("Didn't extract any entities")
     if not all_relationships_data:
-        logger.info("Didn't extract any relationships")
+        logging.info("Didn't extract any relationships")
 
-    logger.info(
+    logging.info(
         f"Extracted {len(all_entities_data)} entities and {len(all_relationships_data)} relationships (deduplicated)"
     )
-    verbose_debug(
-        f"New entities:{all_entities_data}, relationships:{all_relationships_data}"
-    )
-    verbose_debug(f"New relationships:{all_relationships_data}")
 
     if entity_vdb is not None:
         data_for_vdb = {
@@ -615,21 +609,21 @@ async def kg_query(
         query, ai_access_token, query_param, global_config, hashing_kv
     )
 
-    logger.debug(f"High-level keywords: {hl_keywords}")
-    logger.debug(f"Low-level  keywords: {ll_keywords}")
+    logging.debug(f"High-level keywords: {hl_keywords}")
+    logging.debug(f"Low-level  keywords: {ll_keywords}")
 
     # Handle empty keywords
     if hl_keywords == [] and ll_keywords == []:
-        logger.warning("low_level_keywords and high_level_keywords is empty")
+        logging.warning("low_level_keywords and high_level_keywords is empty")
         return PROMPTS["fail_response"]
     if ll_keywords == [] and query_param.mode in ["local", "hybrid"]:
-        logger.warning(
+        logging.warning(
             "low_level_keywords is empty, switching from %s mode to global mode",
             query_param.mode,
         )
         query_param.mode = "global"
     if hl_keywords == [] and query_param.mode in ["global", "hybrid"]:
-        logger.warning(
+        logging.warning(
             "high_level_keywords is empty, switching from %s mode to local mode",
             query_param.mode,
         )
@@ -673,7 +667,7 @@ async def kg_query(
         return sys_prompt
 
     len_of_prompts = len(encode_string_by_tiktoken(query + sys_prompt))
-    logger.debug(f"[kg_query]Prompt Tokens: {len_of_prompts}")
+    logging.debug(f"[kg_query]Prompt Tokens: {len_of_prompts}")
 
     response = await use_model_func(
         ai_access_token,
@@ -735,7 +729,7 @@ async def extract_keywords_only(
                 keywords_data["low_level_keywords"],
             )
         except (json.JSONDecodeError, KeyError):
-            logger.warning(
+            logging.warning(
                 "Invalid cache format for keywords, proceeding with extraction"
             )
 
@@ -764,7 +758,7 @@ async def extract_keywords_only(
     )
 
     len_of_prompts = len(encode_string_by_tiktoken(kw_prompt))
-    logger.debug(f"[kg_query]Prompt Tokens: {len_of_prompts}")
+    logging.debug(f"[kg_query]Prompt Tokens: {len_of_prompts}")
 
     # 5. Call the LLM for keyword extraction
     use_model_func = global_config["llm_model_func"]
@@ -773,12 +767,12 @@ async def extract_keywords_only(
     # 6. Parse out JSON from the LLM response
     match = re.search(r"\{.*\}", result, re.DOTALL)
     if not match:
-        logger.error("No JSON-like structure found in the LLM respond.")
+        logging.error("No JSON-like structure found in the LLM respond.")
         return [], []
     try:
         keywords_data = json.loads(match.group(0))
     except json.JSONDecodeError as e:
-        logger.error(f"JSON parsing error: {e}")
+        logging.error(f"JSON parsing error: {e}")
         return [], []
 
     hl_keywords = keywords_data.get("high_level_keywords", [])
@@ -852,7 +846,7 @@ async def mix_kg_vector_query(
             )
 
             if not hl_keywords and not ll_keywords:
-                logger.warning("Both high-level and low-level keywords are empty")
+                logging.warning("Both high-level and low-level keywords are empty")
                 return None
 
             # Convert keyword lists to strings
@@ -884,7 +878,7 @@ async def mix_kg_vector_query(
             return context
 
         except Exception as e:
-            logger.error(f"Error in get_kg_context: {str(e)}")
+            logging.error(f"Error in get_kg_context: {str(e)}")
             return None
 
     async def get_vector_context():
@@ -935,12 +929,12 @@ async def mix_kg_vector_query(
                     chunk_text = f"[Created at: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(c['created_at']))}]\n{chunk_text}"
                 formatted_chunks.append(chunk_text)
 
-            logger.debug(
+            logging.debug(
                 f"Truncate chunks from {len(chunks)} to {len(formatted_chunks)} (max tokens:{query_param.max_token_for_text_unit})"
             )
             return "\n--New Chunk--\n".join(formatted_chunks)
         except Exception as e:
-            logger.error(f"Error in get_vector_context: {e}")
+            logging.error(f"Error in get_vector_context: {e}")
             return None
 
     # 3. Execute both retrievals in parallel
@@ -979,7 +973,7 @@ async def mix_kg_vector_query(
         return sys_prompt
 
     len_of_prompts = len(encode_string_by_tiktoken(query + sys_prompt))
-    logger.debug(f"[mix_kg_vector_query]Prompt Tokens: {len_of_prompts}")
+    logging.debug(f"[mix_kg_vector_query]Prompt Tokens: {len_of_prompts}")
 
     # 6. Generate response
     response = await use_model_func(
@@ -1114,7 +1108,7 @@ async def _get_node_data(
     query_param: QueryParam,
 ):
     # get similar entities
-    logger.info(
+    logging.info(
         f"Query nodes: {query}, top_k: {query_param.top_k}, cosine: {entities_vdb.cosine_better_than_threshold}"
     )
     results = await entities_vdb.query(ai_access_token, query, top_k=query_param.top_k)
@@ -1131,7 +1125,7 @@ async def _get_node_data(
     )
 
     if not all([n is not None for n in node_datas]):
-        logger.warning("Some nodes are missing, maybe the storage is damaged")
+        logging.warning("Some nodes are missing, maybe the storage is damaged")
 
     node_datas = [
         {**n, "entity_name": k["entity_name"], "rank": d}
@@ -1154,11 +1148,11 @@ async def _get_node_data(
         key=lambda x: x["description"],
         max_token_size=query_param.max_token_for_local_context,
     )
-    logger.debug(
+    logging.debug(
         f"Truncate entities from {len_node_datas} to {len(node_datas)} (max tokens:{query_param.max_token_for_local_context})"
     )
 
-    logger.info(
+    logging.info(
         f"Local query uses {len(node_datas)} entites, {len(use_relations)} relations, {len(use_text_units)} chunks"
     )
 
@@ -1279,7 +1273,7 @@ async def _find_most_related_text_unit_from_entities(
     ]
 
     if not all_text_units:
-        logger.warning("No valid text units found")
+        logging.warning("No valid text units found")
         return []
 
     all_text_units = sorted(
@@ -1292,7 +1286,7 @@ async def _find_most_related_text_unit_from_entities(
         max_token_size=query_param.max_token_for_text_unit,
     )
 
-    logger.debug(
+    logging.debug(
         f"Truncate chunks from {len(all_text_units_lookup)} to {len(all_text_units)} (max tokens:{query_param.max_token_for_text_unit})"
     )
 
@@ -1338,7 +1332,7 @@ async def _find_most_related_edges_from_entities(
         max_token_size=query_param.max_token_for_global_context,
     )
 
-    logger.debug(
+    logging.debug(
         f"Truncate relations from {len(all_edges)} to {len(all_edges_data)} (max tokens:{query_param.max_token_for_global_context})"
     )
 
@@ -1353,7 +1347,7 @@ async def _get_edge_data(
     text_chunks_db: BaseKVStorage,
     query_param: QueryParam,
 ):
-    logger.info(
+    logging.info(
         f"Query edges: {keywords}, top_k: {query_param.top_k}, cosine: {relationships_vdb.cosine_better_than_threshold}"
     )
     results = await relationships_vdb.query(
@@ -1402,7 +1396,7 @@ async def _get_edge_data(
             edge_datas, query_param, text_chunks_db, knowledge_graph_inst
         ),
     )
-    logger.info(
+    logging.info(
         f"Global query uses {len(use_entities)} entites, {len(edge_datas)} relations, {len(use_text_units)} chunks"
     )
 
@@ -1498,7 +1492,7 @@ async def _find_most_related_entities_from_relationships(
         key=lambda x: x["description"],
         max_token_size=query_param.max_token_for_local_context,
     )
-    logger.debug(
+    logging.debug(
         f"Truncate entities from {len_node_datas} to {len(node_datas)} (max tokens:{query_param.max_token_for_local_context})"
     )
 
@@ -1535,7 +1529,7 @@ async def _find_related_text_unit_from_relationships(
     await asyncio.gather(*tasks)
 
     if not all_text_units_lookup:
-        logger.warning("No valid text chunks found")
+        logging.warning("No valid text chunks found")
         return []
 
     all_text_units = [{"id": k, **v} for k, v in all_text_units_lookup.items()]
@@ -1547,7 +1541,7 @@ async def _find_related_text_unit_from_relationships(
     ]
 
     if not valid_text_units:
-        logger.warning("No valid text chunks after filtering")
+        logging.warning("No valid text chunks after filtering")
         return []
 
     truncated_text_units = truncate_list_by_token_size(
@@ -1556,7 +1550,7 @@ async def _find_related_text_unit_from_relationships(
         max_token_size=query_param.max_token_for_text_unit,
     )
 
-    logger.debug(
+    logging.debug(
         f"Truncate chunks from {len(valid_text_units)} to {len(truncated_text_units)} (max tokens:{query_param.max_token_for_text_unit})"
     )
 
@@ -1621,7 +1615,7 @@ async def naive_query(
     ]
 
     if not valid_chunks:
-        logger.warning("No valid chunks found after filtering")
+        logging.warning("No valid chunks found after filtering")
         return PROMPTS["fail_response"]
 
     maybe_trun_chunks = truncate_list_by_token_size(
@@ -1631,10 +1625,10 @@ async def naive_query(
     )
 
     if not maybe_trun_chunks:
-        logger.warning("No chunks left after truncation")
+        logging.warning("No chunks left after truncation")
         return PROMPTS["fail_response"]
 
-    logger.debug(
+    logging.debug(
         f"Truncate chunks from {len(chunks)} to {len(maybe_trun_chunks)} (max tokens:{query_param.max_token_for_text_unit})"
     )
 
@@ -1661,7 +1655,7 @@ async def naive_query(
         return sys_prompt
 
     len_of_prompts = len(encode_string_by_tiktoken(query + sys_prompt))
-    logger.debug(f"[naive_query]Prompt Tokens: {len_of_prompts}")
+    logging.debug(f"[naive_query]Prompt Tokens: {len_of_prompts}")
 
     response = await use_model_func(
         ai_access_token,
@@ -1742,15 +1736,15 @@ async def kg_query_with_keywords(
 
     # If neither has any keywords, you could handle that logic here.
     if not hl_keywords and not ll_keywords:
-        logger.warning(
+        logging.warning(
             "No keywords found in query_param. Could default to global mode or fail."
         )
         return PROMPTS["fail_response"]
     if not ll_keywords and query_param.mode in ["local", "hybrid"]:
-        logger.warning("low_level_keywords is empty, switching to global mode.")
+        logging.warning("low_level_keywords is empty, switching to global mode.")
         query_param.mode = "global"
     if not hl_keywords and query_param.mode in ["global", "hybrid"]:
-        logger.warning("high_level_keywords is empty, switching to local mode.")
+        logging.warning("high_level_keywords is empty, switching to local mode.")
         query_param.mode = "local"
 
     # Flatten low-level and high-level keywords if needed
@@ -1811,7 +1805,7 @@ async def kg_query_with_keywords(
         return sys_prompt
 
     len_of_prompts = len(encode_string_by_tiktoken(query + sys_prompt))
-    logger.debug(f"[kg_query_with_keywords]Prompt Tokens: {len_of_prompts}")
+    logging.debug(f"[kg_query_with_keywords]Prompt Tokens: {len_of_prompts}")
 
     response = await use_model_func(
         ai_access_token,

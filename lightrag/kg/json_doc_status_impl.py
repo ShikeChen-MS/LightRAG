@@ -10,9 +10,7 @@ from ..base import (
     DocStatus,
     DocStatusStorage,
 )
-from ..utils import (
-    logger,
-)
+import logging
 from ..api.utils_api import try_get_container_lease
 
 
@@ -50,7 +48,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             blob_list = container_client.list_blob_names()
             blob_name = f"{self.global_config["working_dir"]}/data/kv_store_{self.namespace}.json"
             if not blob_name in blob_list:
-                logger.info(f"Creating new kv_store_{self.namespace}.json")
+                logging.info(f"Creating new kv_store_{self.namespace}.json")
                 self._data: dict[str, Any] = {}
                 json_data = json.dumps(self._data)
                 json_bytes = BytesIO(json_data.encode("utf-8"))
@@ -72,7 +70,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             content_str = content.decode("utf-8")
             self._data = json.loads(content_str)
         except Exception as e:
-            logger.warning(f"Failed to load graph from Azure Blob Storage: {e}")
+            logging.warning(f"Failed to load graph from Azure Blob Storage: {e}")
             raise
         finally:
             if lease:
@@ -114,7 +112,7 @@ class JsonDocStatusStorage(DocStatusStorage):
                         data["content"] = data["content_summary"]
                     result[k] = DocProcessingStatus(**data)
                 except KeyError as e:
-                    logger.error(f"Missing required field for document {k}: {e}")
+                    logging.error(f"Missing required field for document {k}: {e}")
                     continue
         return result
 
@@ -148,7 +146,7 @@ class JsonDocStatusStorage(DocStatusStorage):
             lease.release()
             lease = None
         except Exception as e:
-            logger.warning(f"Failed to upload graph to Azure Blob Storage: {e}")
+            logging.warning(f"Failed to upload graph to Azure Blob Storage: {e}")
             raise
         finally:
             if lease:
@@ -163,7 +161,7 @@ class JsonDocStatusStorage(DocStatusStorage):
         storage_container_name: str,
         access_token: LightRagTokenCredential,
     ) -> None:
-        logger.info(f"Inserting {len(data)} to {self.namespace}")
+        logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
 

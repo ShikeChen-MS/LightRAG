@@ -4,6 +4,7 @@ import configparser
 import os
 import threading
 import traceback
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -45,9 +46,7 @@ from .utils import (
     convert_response_to_json,
     encode_string_by_tiktoken,
     lazy_external_import,
-    limit_async_func_call,
-    logger,
-    set_logger,
+    limit_async_func_call
 )
 from .types import KnowledgeGraph
 from dotenv import load_dotenv
@@ -183,7 +182,7 @@ class LightRAG:
         # Show config
         global_config = self.__dict__
         _print_config = ",\n  ".join([f"{k} = {v}" for k, v in global_config.items()])
-        logger.debug(f"LightRAG init with param:\n  {_print_config}\n")
+        logging.debug(f"LightRAG init with param:\n  {_print_config}\n")
 
         # Init LLM
         self.embedding_func = limit_async_func_call(self.embedding_func_max_async)(  # type: ignore
@@ -204,12 +203,12 @@ class LightRAG:
             if loop.is_running():
                 task = loop.create_task(async_func())
                 task.add_done_callback(
-                    lambda t: logger.info(f"{action_name} completed!")
+                    lambda t: logging.info(f"{action_name} completed!")
                 )
             else:
                 loop.run_until_complete(async_func())
         except RuntimeError:
-            logger.warning(
+            logging.warning(
                 f"No running event loop, creating a new loop for {action_name}."
             )
             loop = asyncio.new_event_loop()
@@ -342,7 +341,7 @@ class LightRAG:
 
             self._storages_status = StoragesStatus.INITIALIZED
             self.initialize_status = InitializeStatus.INITIALIZED
-            logger.debug("Initialized Storages")
+            logging.info("Initialized Storages")
 
     async def finalize_storages(self):
         """Asynchronously finalize the storages"""
@@ -365,7 +364,7 @@ class LightRAG:
             await asyncio.gather(*tasks)
 
             self._storages_status = StoragesStatus.FINALIZED
-            logger.debug("Finalized Storages")
+            logging.debug("Finalized Storages")
 
     async def get_graph_labels(self):
         text = await self.chunk_entity_relation_graph.get_all_labels()
@@ -491,11 +490,11 @@ class LightRAG:
             _add_doc_keys = await self.full_docs.filter_keys({doc_key})
             new_docs = {k: v for k, v in new_docs.items() if k in _add_doc_keys}
             if not len(new_docs):
-                logger.warning("This document is already in the storage.")
+                logging.warning("This document is already in the storage.")
                 return
 
             update_storage = True
-            logger.info(f"Inserting {len(new_docs)} docs")
+            logging.info(f"Inserting {len(new_docs)} docs")
 
             inserting_chunks: dict[str, Any] = {}
             for chunk_text in text_chunks:
@@ -512,7 +511,7 @@ class LightRAG:
                 k: v for k, v in inserting_chunks.items() if k in add_chunk_keys
             }
             if not len(inserting_chunks):
-                logger.warning("All chunks are already in the storage.")
+                logging.warning("All chunks are already in the storage.")
                 return
 
             tasks = [
@@ -599,7 +598,7 @@ class LightRAG:
         new_docs = {doc_id: new_docs[doc_id] for doc_id in unique_new_doc_ids}
 
         if not new_docs:
-            logger.info("No new unique documents were found.")
+            logging.info("No new unique documents were found.")
             return
 
         # 5. Store status document
@@ -609,7 +608,7 @@ class LightRAG:
             storage_container_name,
             access_token,
         )
-        logger.info(f"Stored {len(new_docs)} new unique documents")
+        logging.info(f"Stored {len(new_docs)} new unique documents")
 
     async def apipeline_process_enqueue_documents(
         self,
@@ -644,7 +643,7 @@ class LightRAG:
         to_process_docs.update(pending_docs)
 
         if not to_process_docs:
-            logger.info("All documents have been processed or are duplicates")
+            logging.info("All documents have been processed or are duplicates")
             return
 
         # 2. split docs into chunks, insert chunks, update doc status
@@ -653,7 +652,7 @@ class LightRAG:
             for i in range(0, len(to_process_docs), self.max_parallel_insert)
         ]
 
-        logger.info(f"Number of batches to process: {len(docs_batches)}.")
+        logging.info(f"Number of batches to process: {len(docs_batches)}.")
 
         batches: list[Any] = []
         # 3. iterate over batches
@@ -664,7 +663,7 @@ class LightRAG:
                 docs_batch: list[tuple[str, DocProcessingStatus]],
                 size_batch: int,
             ) -> None:
-                logger.info(f"Start processing batch {batch_idx + 1} of {size_batch}.")
+                logging.info(f"Start processing batch {batch_idx + 1} of {size_batch}.")
                 # 4. iterate over batch
                 for doc_id_processing_status in docs_batch:
                     doc_id, status_doc = doc_id_processing_status
@@ -726,7 +725,7 @@ class LightRAG:
                             access_token,
                         )
                     except Exception as e:
-                        logger.error(f"Failed to process document {doc_id}: {str(e)}")
+                        logging.error(f"Failed to process document {doc_id}: {str(e)}")
                         traceback.print_exc()
                         await self.doc_status.upsert(
                             {
@@ -745,7 +744,7 @@ class LightRAG:
                             access_token,
                         )
                         continue
-                logger.info(f"Completed batch {batch_idx + 1} of {len(docs_batches)}.")
+                logging.info(f"Completed batch {batch_idx + 1} of {len(docs_batches)}.")
 
             batches.append(batch(batch_idx, docs_batch, len(docs_batches)))
 
@@ -768,7 +767,7 @@ class LightRAG:
                 global_config=self.__dict__,
             )
         except Exception as e:
-            logger.error("Failed to extract entities and relationships")
+            logging.error("Failed to extract entities and relationships")
             raise e
 
     async def _insert_done(
@@ -793,7 +792,7 @@ class LightRAG:
             if storage_inst is not None
         ]
         await asyncio.gather(*tasks)
-        logger.info("All Insert done")
+        logging.info("All Insert done")
 
     def insert_custom_kg(
         self,
@@ -871,7 +870,7 @@ class LightRAG:
 
                 # Log if source_id is UNKNOWN
                 if source_id == "UNKNOWN":
-                    logger.warning(
+                    logging.warning(
                         f"Entity '{entity_name}' has an UNKNOWN source_id. Please check the source mapping."
                     )
 
@@ -903,7 +902,7 @@ class LightRAG:
 
                 # Log if source_id is UNKNOWN
                 if source_id == "UNKNOWN":
-                    logger.warning(
+                    logging.warning(
                         f"Relationship from '{src_id}' to '{tgt_id}' has an UNKNOWN source_id. Please check the source mapping."
                     )
 
@@ -1243,12 +1242,12 @@ class LightRAG:
             await self.relationships_vdb.delete_entity_relation(entity_name)
             await self.chunk_entity_relation_graph.delete_node(entity_name)
 
-            logger.info(
+            logging.info(
                 f"Entity '{entity_name}' and its relationships have been deleted."
             )
             await self._delete_by_entity_done()
         except Exception as e:
-            logger.error(f"Error while deleting entity '{entity_name}': {e}")
+            logging.error(f"Error while deleting entity '{entity_name}': {e}")
 
     async def _delete_by_entity_done(self) -> None:
         await asyncio.gather(
@@ -1311,10 +1310,10 @@ class LightRAG:
             # 1. Get the document status and related data
             doc_status = await self.doc_status.get_by_id(doc_id)
             if not doc_status:
-                logger.warning(f"Document {doc_id} not found")
+                logging.warning(f"Document {doc_id} not found")
                 return
 
-            logger.debug(f"Starting deletion for document {doc_id}")
+            logging.debug(f"Starting deletion for document {doc_id}")
 
             # 2. Get all related chunks
             chunks = await self.text_chunks.get_by_id(doc_id)
@@ -1322,7 +1321,7 @@ class LightRAG:
                 return
 
             chunk_ids = list(chunks.keys())
-            logger.debug(f"Found {len(chunk_ids)} chunks to delete")
+            logging.debug(f"Found {len(chunk_ids)} chunks to delete")
 
             # 3. Before deleting, check the related entities and relationships for these chunks
             for chunk_id in chunk_ids:
@@ -1332,7 +1331,7 @@ class LightRAG:
                     for dp in self.entities_vdb.client_storage["data"]
                     if dp.get("source_id") == chunk_id
                 ]
-                logger.debug(f"Chunk {chunk_id} has {len(entities)} related entities")
+                logging.debug(f"Chunk {chunk_id} has {len(entities)} related entities")
 
                 # Check relationships
                 relations = [
@@ -1340,7 +1339,7 @@ class LightRAG:
                     for dp in self.relationships_vdb.client_storage["data"]
                     if dp.get("source_id") == chunk_id
                 ]
-                logger.debug(f"Chunk {chunk_id} has {len(relations)} related relations")
+                logging.debug(f"Chunk {chunk_id} has {len(relations)} related relations")
 
             # Continue with the original deletion process...
 
@@ -1368,13 +1367,13 @@ class LightRAG:
                     sources.difference_update(chunk_ids)
                     if not sources:
                         entities_to_delete.add(node)
-                        logger.debug(
+                        logging.debug(
                             f"Entity {node} marked for deletion - no remaining sources"
                         )
                     else:
                         new_source_id = GRAPH_FIELD_SEP.join(sources)
                         entities_to_update[node] = new_source_id
-                        logger.debug(
+                        logging.debug(
                             f"Entity {node} will be updated with new source_id: {new_source_id}"
                         )
 
@@ -1386,13 +1385,13 @@ class LightRAG:
                     sources.difference_update(chunk_ids)
                     if not sources:
                         relationships_to_delete.add((src, tgt))
-                        logger.debug(
+                        logging.debug(
                             f"Relationship {src}-{tgt} marked for deletion - no remaining sources"
                         )
                     else:
                         new_source_id = GRAPH_FIELD_SEP.join(sources)
                         relationships_to_update[(src, tgt)] = new_source_id
-                        logger.debug(
+                        logging.debug(
                             f"Relationship {src}-{tgt} will be updated with new source_id: {new_source_id}"
                         )
 
@@ -1400,16 +1399,16 @@ class LightRAG:
             if entities_to_delete:
                 for entity in entities_to_delete:
                     await self.entities_vdb.delete_entity(entity)
-                    logger.debug(f"Deleted entity {entity} from vector DB")
+                    logging.debug(f"Deleted entity {entity} from vector DB")
                 self.chunk_entity_relation_graph.remove_nodes(list(entities_to_delete))
-                logger.debug(f"Deleted {len(entities_to_delete)} entities from graph")
+                logging.debug(f"Deleted {len(entities_to_delete)} entities from graph")
 
             # Update entities
             for entity, new_source_id in entities_to_update.items():
                 node_data = self.chunk_entity_relation_graph._graph.nodes[entity]
                 node_data["source_id"] = new_source_id
                 await self.chunk_entity_relation_graph.upsert_node(entity, node_data)
-                logger.debug(
+                logging.debug(
                     f"Updated entity {entity} with new source_id: {new_source_id}"
                 )
 
@@ -1419,11 +1418,11 @@ class LightRAG:
                     rel_id_0 = compute_mdhash_id(src + tgt, prefix="rel-")
                     rel_id_1 = compute_mdhash_id(tgt + src, prefix="rel-")
                     await self.relationships_vdb.delete([rel_id_0, rel_id_1])
-                    logger.debug(f"Deleted relationship {src}-{tgt} from vector DB")
+                    logging.debug(f"Deleted relationship {src}-{tgt} from vector DB")
                 self.chunk_entity_relation_graph.remove_edges(
                     list(relationships_to_delete)
                 )
-                logger.debug(
+                logging.debug(
                     f"Deleted {len(relationships_to_delete)} relationships from graph"
                 )
 
@@ -1432,7 +1431,7 @@ class LightRAG:
                 edge_data = self.chunk_entity_relation_graph._graph.edges[src, tgt]
                 edge_data["source_id"] = new_source_id
                 await self.chunk_entity_relation_graph.upsert_edge(src, tgt, edge_data)
-                logger.debug(
+                logging.debug(
                     f"Updated relationship {src}-{tgt} with new source_id: {new_source_id}"
                 )
 
@@ -1445,7 +1444,7 @@ class LightRAG:
                 storage_account_url, storage_container_name, access_token
             )
 
-            logger.info(
+            logging.info(
                 f"Successfully deleted document {doc_id} and related data. "
                 f"Deleted {len(entities_to_delete)} entities and {len(relationships_to_delete)} relationships. "
                 f"Updated {len(entities_to_update)} entities and {len(relationships_to_update)} relationships."
@@ -1455,12 +1454,12 @@ class LightRAG:
             async def verify_deletion():
                 # Verify if the document has been deleted
                 if await self.full_docs.get_by_id(doc_id):
-                    logger.error(f"Document {doc_id} still exists in full_docs")
+                    logging.error(f"Document {doc_id} still exists in full_docs")
 
                 # Verify if chunks have been deleted
                 remaining_chunks = await self.text_chunks.get_by_id(doc_id)
                 if remaining_chunks:
-                    logger.error(f"Found {len(remaining_chunks)} remaining chunks")
+                    logging.error(f"Found {len(remaining_chunks)} remaining chunks")
 
                 # Verify entities and relationships
                 for chunk_id in chunk_ids:
@@ -1472,7 +1471,7 @@ class LightRAG:
                         in (dp.get("source_id") or "").split(GRAPH_FIELD_SEP)
                     ]
                     if entities_with_chunk:
-                        logger.error(
+                        logging.error(
                             f"Found {len(entities_with_chunk)} entities still referencing chunk {chunk_id}"
                         )
 
@@ -1484,14 +1483,14 @@ class LightRAG:
                         in (dp.get("source_id") or "").split(GRAPH_FIELD_SEP)
                     ]
                     if relations_with_chunk:
-                        logger.error(
+                        logging.error(
                             f"Found {len(relations_with_chunk)} relations still referencing chunk {chunk_id}"
                         )
 
             await verify_deletion()
 
         except Exception as e:
-            logger.error(f"Error while deleting document {doc_id}: {e}")
+            logging.error(f"Error while deleting document {doc_id}: {e}")
 
     async def get_entity_info(
         self, entity_name: str, include_vector_data: bool = False
