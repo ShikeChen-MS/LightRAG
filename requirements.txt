@@ -5,7 +5,6 @@ configparser
 future
 numpy
 openai
-pipmaster
 pydantic
 python-dotenv
 azure-storage-blob

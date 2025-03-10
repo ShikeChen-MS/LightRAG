@@ -23,6 +23,7 @@ load_dotenv()
 class TextChunkSchema(TypedDict):
     tokens: int
     content: str
+    source_id: str
     full_doc_id: str
     chunk_order_index: int
 
@@ -255,6 +256,8 @@ class DocProcessingStatus:
 
     content: str
     """Original content of the document"""
+    source_id: str
+    """ID of the source document"""
     content_summary: str
     """First 100 chars of document content, used for preview"""
     content_length: int

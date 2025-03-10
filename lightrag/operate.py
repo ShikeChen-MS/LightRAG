@@ -40,6 +40,7 @@ load_dotenv(override=True)
 
 def chunking_by_token_size(
     content: str,
+    source_id: str,
     split_by_character: str | None = None,
     split_by_character_only: bool = False,
     overlap_token_size: int = 128,
@@ -76,6 +77,7 @@ def chunking_by_token_size(
                 {
                     "tokens": _len,
                     "content": chunk.strip(),
+                    "source_id": source_id,
                     "chunk_order_index": index,
                 }
             )
@@ -90,6 +92,7 @@ def chunking_by_token_size(
                 {
                     "tokens": min(max_token_size, len(tokens) - start),
                     "content": chunk_content.strip(),
+                    "source_id": source_id,
                     "chunk_order_index": index,
                 }
             )
@@ -137,6 +140,7 @@ async def _handle_entity_relation_summary(
 async def _handle_single_entity_extraction(
     record_attributes: list[str],
     chunk_key: str,
+    source_id: str
 ):
     if len(record_attributes) < 4 or record_attributes[0] != '"entity"':
         return None
@@ -147,17 +151,20 @@ async def _handle_single_entity_extraction(
     entity_type = clean_str(record_attributes[2].upper())
     entity_description = clean_str(record_attributes[3])
     entity_source_id = chunk_key
+    input_source_id = source_id
     return dict(
         entity_name=entity_name,
         entity_type=entity_type,
         description=entity_description,
         source_id=entity_source_id,
+        input_source_id=input_source_id,
     )
 
 
 async def _handle_single_relationship_extraction(
     record_attributes: list[str],
     chunk_key: str,
+    source_id: str,
 ):
     if len(record_attributes) < 5 or record_attributes[0] != '"relationship"':
         return None
@@ -168,6 +175,7 @@ async def _handle_single_relationship_extraction(
 
     edge_keywords = clean_str(record_attributes[4])
     edge_source_id = chunk_key
+    input_source_id= source_id
     weight = (
         float(record_attributes[-1]) if is_float_regex(record_attributes[-1]) else 1.0
     )
@@ -178,6 +186,7 @@ async def _handle_single_relationship_extraction(
         description=edge_description,
         keywords=edge_keywords,
         source_id=edge_source_id,
+        input_source_id = source_id,
         metadata={"created_at": time.time()},
     )
 
@@ -193,6 +202,7 @@ async def _merge_nodes_then_upsert(
     already_entity_types = []
     already_source_ids = []
     already_description = []
+    already_input_source_ids = []
 
     already_node = await knowledge_graph_inst.get_node(entity_name)
     if already_node is not None:
@@ -215,6 +225,9 @@ async def _merge_nodes_then_upsert(
     source_id = GRAPH_FIELD_SEP.join(
         set([dp["source_id"] for dp in nodes_data] + already_source_ids)
     )
+    input_source_id = GRAPH_FIELD_SEP.join(
+        set([dp["input_source_id"] for dp in nodes_data] + already_input_source_ids)
+    )
     description = await _handle_entity_relation_summary(
         entity_name, description, global_config, ai_access_token
     )
@@ -222,6 +235,7 @@ async def _merge_nodes_then_upsert(
         entity_type=entity_type,
         description=description,
         source_id=source_id,
+        input_source_id=input_source_id,
     )
     await knowledge_graph_inst.upsert_node(
         entity_name,
@@ -243,6 +257,7 @@ async def _merge_edges_then_upsert(
     already_source_ids = []
     already_description = []
     already_keywords = []
+    already_input_source_ids = []
 
     if await knowledge_graph_inst.has_edge(src_id, tgt_id):
         already_edge = await knowledge_graph_inst.get_edge(src_id, tgt_id)
@@ -296,6 +311,13 @@ async def _merge_edges_then_upsert(
         )
     )
 
+    input_source_id = GRAPH_FIELD_SEP.join(
+        set(
+            [dp["input_source_id"] for dp in edges_data if dp.get("input_source_id")]
+            + already_input_source_ids
+        )
+    )
+
     for need_insert_id in [src_id, tgt_id]:
         if not (await knowledge_graph_inst.has_node(need_insert_id)):
             await knowledge_graph_inst.upsert_node(
@@ -303,6 +325,7 @@ async def _merge_edges_then_upsert(
                 node_data={
                     "source_id": source_id,
                     "description": description,
+                    "input_source_id": input_source_id,
                     "entity_type": "UNKNOWN",
                 },
             )
@@ -317,6 +340,7 @@ async def _merge_edges_then_upsert(
             description=description,
             keywords=keywords,
             source_id=source_id,
+            input_source_id=input_source_id,
         ),
     )
 
@@ -325,6 +349,7 @@ async def _merge_edges_then_upsert(
         tgt_id=tgt_id,
         description=description,
         keywords=keywords,
+        input_source_id=input_source_id,
     )
 
     return edge_data
@@ -446,6 +471,7 @@ async def extract_entities(
         nonlocal processed_chunks
         chunk_key = chunk_key_dp[0]
         chunk_dp = chunk_key_dp[1]
+        source_id = chunk_key_dp[1]["source_id"]
         content = chunk_dp["content"]
         # hint_prompt = entity_extract_prompt.format(**context_base, input_text=content)
         hint_prompt = entity_extract_prompt.format(
@@ -487,14 +513,14 @@ async def extract_entities(
                 record, [context_base["tuple_delimiter"]]
             )
             if_entities = await _handle_single_entity_extraction(
-                record_attributes, chunk_key
+                record_attributes, chunk_key, source_id
             )
             if if_entities is not None:
                 maybe_nodes[if_entities["entity_name"]].append(if_entities)
                 continue
 
             if_relation = await _handle_single_relationship_extraction(
-                record_attributes, chunk_key
+                record_attributes, chunk_key, source_id
             )
             if if_relation is not None:
                 maybe_edges[(if_relation["src_id"], if_relation["tgt_id"])].append(
@@ -555,6 +581,7 @@ async def extract_entities(
             compute_mdhash_id(dp["entity_name"], prefix="ent-"): {
                 "content": dp["entity_name"] + dp["description"],
                 "entity_name": dp["entity_name"],
+                "input_source_id": dp["input_source_id"]
             }
             for dp in all_entities_data
         }
@@ -572,6 +599,7 @@ async def extract_entities(
                 "metadata": {
                     "created_at": dp.get("metadata", {}).get("created_at", time.time())
                 },
+                "input_source_id": dp["input_source_id"],
             }
             for dp in all_relationships_data
         }
@@ -1131,7 +1159,7 @@ async def _get_node_data(
         {**n, "entity_name": k["entity_name"], "rank": d}
         for k, n, d in zip(results, node_datas, node_degrees)
         if n is not None
-    ]  # what is this text_chunks_db doing.  dont remember it in airvx.  check the diagram.
+    ]  # what is this text_chunks_db doing. dont remember it in airvx.  check the diagram.
     # get entitytext chunk
     use_text_units, use_relations = await asyncio.gather(
         _find_most_related_text_unit_from_entities(

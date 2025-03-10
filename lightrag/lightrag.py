@@ -270,14 +270,14 @@ class LightRAG:
                 self.namespace_prefix, NameSpace.VECTOR_STORE_ENTITIES
             ),
             embedding_func=self.embedding_func,
-            meta_fields={"entity_name"},
+            meta_fields={"entity_name", "input_source_id"},
         )
         self.relationships_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.VECTOR_STORE_RELATIONSHIPS
             ),
             embedding_func=self.embedding_func,
-            meta_fields={"src_id", "tgt_id"},
+            meta_fields={"src_id", "tgt_id", "input_source_id"},
         )
         self.chunks_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=make_namespace(
@@ -532,8 +532,8 @@ class LightRAG:
         storage_account_url: str,
         storage_container_name: str,
         access_token: LightRagTokenCredential,
-        input: str | list[str],
-        ids: list[str] | None = None,
+        source_ids: list[str],
+        input: str | list[str]
     ) -> None:
         """
         Pipeline for Processing Documents
@@ -546,26 +546,16 @@ class LightRAG:
         """
         if isinstance(input, str):
             input = [input]
-        if isinstance(ids, str):
-            ids = [ids]
 
-        # 1. Validate ids if provided or generate MD5 hash IDs
-        if ids is not None:
-            # Check if the number of IDs matches the number of documents
-            if len(ids) != len(input):
-                raise ValueError("Number of IDs must match the number of documents")
+        if len(source_ids) != len(input):
+            raise ValueError("Number of source_ids must match the number of documents")
 
-            # Check if IDs are unique
-            if len(ids) != len(set(ids)):
-                raise ValueError("IDs must be unique")
+        if len(source_ids) != len(set(source_ids)):
+            raise ValueError("source_ids must be unique")
 
-            # Generate contents dict of IDs provided by user and documents
-            contents = {id_: doc for id_, doc in zip(ids, input)}
-        else:
-            # Clean input text and remove duplicates
-            input = list(set(self.clean_text(doc) for doc in input))
-            # Generate contents dict of MD5 hash IDs and documents
-            contents = {compute_mdhash_id(doc, prefix="doc-"): doc for doc in input}
+
+        # Generate contents dict of IDs provided by user and documents
+        contents = {id_: doc for id_, doc in zip(source_ids, input)}
 
         # 2. Remove duplicate contents
         unique_contents = {
@@ -579,6 +569,7 @@ class LightRAG:
         new_docs: dict[str, Any] = {
             id_: {
                 "content": content,
+                "source_id": id_,
                 "content_summary": self._get_content_summary(content),
                 "content_length": len(content),
                 "status": DocStatus.PENDING,
@@ -593,6 +584,9 @@ class LightRAG:
         all_new_doc_ids = set(new_docs.keys())
         # Exclude IDs of documents that are already in progress
         unique_new_doc_ids = await self.doc_status.filter_keys(all_new_doc_ids)
+        excluded_doc = all_new_doc_ids - unique_new_doc_ids
+        if len(excluded_doc) > 0:
+            raise ValueError(f"Following source Id already exists: {excluded_doc}")
         # Filter new_docs to only include documents with unique IDs
         new_docs = {doc_id: new_docs[doc_id] for doc_id in unique_new_doc_ids}
 
@@ -674,6 +668,7 @@ class LightRAG:
                         }
                         for dp in self.chunking_func(
                             status_doc.content,
+                            status_doc.source_id,
                             split_by_character,
                             split_by_character_only,
                             self.chunk_overlap_token_size,
@@ -687,6 +682,7 @@ class LightRAG:
                             {
                                 doc_id: {
                                     "status": DocStatus.PROCESSING,
+                                    "source_id": doc_id,
                                     "updated_at": datetime.now().isoformat(),
                                     "content": status_doc.content,
                                     "content_summary": status_doc.content_summary,
@@ -711,6 +707,7 @@ class LightRAG:
                             {
                                 doc_id: {
                                     "status": DocStatus.PROCESSED,
+                                    "source_id": doc_id,
                                     "chunks_count": len(chunks),
                                     "content": status_doc.content,
                                     "content_summary": status_doc.content_summary,
@@ -730,6 +727,7 @@ class LightRAG:
                                 doc_id: {
                                     "status": DocStatus.FAILED,
                                     "error": str(e),
+                                    "source_id": doc_id,
                                     "content": status_doc.content,
                                     "content_summary": status_doc.content_summary,
                                     "content_length": status_doc.content_length,

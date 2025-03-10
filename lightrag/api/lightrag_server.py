@@ -14,7 +14,7 @@ import os
 import logging.config
 import configparser
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from .utils_api import (
@@ -128,6 +128,46 @@ def create_app(args, rag_instance_manager):
     app.include_router(create_document_routes(rag_instance_manager, api_key))
     app.include_router(create_query_routes(rag_instance_manager, api_key, args.top_k))
     app.include_router(create_graph_routes(rag_instance_manager, api_key))
+
+    @app.get("/logs", dependencies=[Depends(optional_api_key)])
+    async def get_logs(
+            storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_container_name: str = Header(alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(
+            default=None, alias="Storage_Access_Token_Expiry"
+        ),
+        storage_access_token: str = Header(alias="Storage_Access_Token")
+    ):
+        current_dir = os.path.dirname(__file__)
+        logging_config_path = os.path.join(current_dir, "logging_config.json")
+        with open(logging_config_path, "r") as f:
+            logging_configs = json.load(f)
+            logfile_name = logging_configs["handlers"]["file"]["filename"]
+        if os.path.isfile(logfile_name):
+            return FileResponse(logfile_name)
+        return JSONResponse( status_code=404, content="Log file not found.")
+
+    @app.delete("/logs", dependencies=[Depends(optional_api_key)])
+    async def delete_logs(
+            storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_container_name: str = Header(alias="Storage_Container_Name"),
+        storage_token_expiry: str = Header(
+            default=None, alias="Storage_Access_Token_Expiry"
+        ),
+        storage_access_token: str = Header(alias="Storage_Access_Token")
+    ):
+        current_dir = os.path.dirname(__file__)
+        logging_config_path = os.path.join(current_dir, "logging_config.json")
+        with open(logging_config_path, "r") as f:
+            logging_configs = json.load(f)
+            logfile_name = logging_configs["handlers"]["file"]["filename"]
+        if os.path.isfile(logfile_name):
+            os.remove(logfile_name)
+            return JSONResponse(status_code=200, content="Log file deleted.")
+        return JSONResponse(status_code=404, content="Log file not found.")
+
+
+
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(

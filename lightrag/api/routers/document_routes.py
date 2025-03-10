@@ -7,7 +7,6 @@ import io
 import logging
 import os
 import traceback
-import pipmaster as pm
 from azure.storage.blob import BlobServiceClient, BlobLeaseClient, ContainerClient
 from ..rag_instance_manager import RAGInstanceManager
 from typing import Dict, List, Optional, Any
@@ -48,9 +47,9 @@ class InsertTextRequest(BaseModel):
         min_length=1,
         description="The text to insert",
     )
-
-    id: Optional[str] = Field(
-        default=None, min_length=1, description="The id of the text to insert"
+    source_id: str = Field(
+        min_length=1,
+        description="The source id of the text to insert",
     )
 
     @field_validator("text", mode="after")
@@ -64,9 +63,9 @@ class InsertTextsRequest(BaseModel):
         min_length=1,
         description="The texts to insert",
     )
-
-    ids: Optional[list[str]] = Field(
-        default=None, min_length=1, description="The ids of the texts to insert"
+    source_ids: list[str] = Field(
+        min_length=1,
+        description="The source ids of the texts to insert",
     )
 
     @field_validator("texts", mode="after")
@@ -228,63 +227,6 @@ async def pipeline_enqueue_file(
                 content = file_byte.decode("utf-8")
                 lease.release()
                 lease = None
-
-            case ".pdf":
-                if not pm.is_installed("pypdf2"):
-                    pm.install("pypdf2")
-                from PyPDF2 import PdfReader  # type: ignore
-
-                pdf_file = await get_file_stream_from_storage(
-                    file_name, container_client
-                )
-                reader = PdfReader(pdf_file)
-                for page in reader.pages:
-                    content += page.extract_text() + "\n"
-            case ".docx":
-                if not pm.is_installed("python-docx"):
-                    pm.install("python-docx")
-                from docx import Document
-                from io import BytesIO
-
-                docx_file = await get_file_stream_from_storage(
-                    file_name, container_client
-                )
-                doc = Document(docx_file)
-                content = "\n".join([paragraph.text for paragraph in doc.paragraphs])
-            case ".pptx":
-                if not pm.is_installed("python-pptx"):
-                    pm.install("python-pptx")
-                from pptx import Presentation
-                from io import BytesIO
-
-                pptx_file = await get_file_stream_from_storage(
-                    file_name, container_client
-                )
-                prs = Presentation(pptx_file)
-                for slide in prs.slides:
-                    for shape in slide.shapes:
-                        if hasattr(shape, "text"):
-                            content += shape.text + "\n"
-            case ".xlsx":
-                if not pm.is_installed("openpyxl"):
-                    pm.install("openpyxl")
-                from openpyxl import load_workbook
-                from io import BytesIO
-
-                xlsx_file = await get_file_stream_from_storage(
-                    file_name, container_client
-                )
-                wb = load_workbook(xlsx_file)
-                for sheet in wb:
-                    content += f"Sheet: {sheet.title}\n"
-                    for row in sheet.iter_rows(values_only=True):
-                        content += (
-                            "\t".join(
-                                str(cell) if cell is not None else "" for cell in row
-                            )
-                            + "\n"
-                        )
-                    content += "\n"
             case _:
                 logging.error(f"Unsupported file type: {file_path} (extension {ext})")
                 return False
@@ -292,7 +234,7 @@ async def pipeline_enqueue_file(
         # Insert into the RAG queue
         if content:
             await rag.apipeline_enqueue_documents(
-                storage_account_url, storage_container_name, access_token, content
+                storage_account_url, storage_container_name, access_token, [file_path], content
             )
             logging.info(f"Successfully fetched and enqueued file: {file_path}")
             return True
@@ -339,7 +281,7 @@ async def pipeline_index_file(
 async def pipeline_index_texts(
     rag: LightRAG,
     texts: List[str],
-    ids: List[str] | None,
+    source_ids: List[str],
     ai_access_token: str,
     storage_account_url: str,
     storage_container_name: str,
@@ -349,7 +291,7 @@ async def pipeline_index_texts(
     if not texts:
         return
     await rag.apipeline_enqueue_documents(
-        storage_account_url, storage_container_name, access_token, texts, ids
+        storage_account_url, storage_container_name, access_token, source_ids, texts
     )
     await rag.apipeline_process_enqueue_documents(
         ai_access_token, storage_account_url, storage_container_name, access_token
@@ -528,7 +470,7 @@ def create_document_routes(
             await pipeline_index_texts(
                 rag,
                 [request.text],
-                [request.id] if request.id else None,
+                [request.source_id],
                 ai_access_token,
                 storage_account_url,
                 storage_container_name,
@@ -595,7 +537,7 @@ def create_document_routes(
             await pipeline_index_texts(
                 rag,
                 request.texts,
-                request.ids if request.ids else None,
+                request.source_ids,
                 ai_access_token,
                 storage_account_url,
                 storage_container_name,
@@ -656,6 +598,11 @@ def create_document_routes(
                 raise HTTPException(
                     status_code=400,
                     detail=f"Unsupported file type. Supported types: {rag.document_manager.supported_extensions}",
+                )
+            if ' ' in file.filename:
+                raise HTTPException(
+                    status_code=400,
+                    detail="File name (which will be used as source id) cannot contain spaces.",
                 )
             await wait_for_storage_initialization(
                 rag,
