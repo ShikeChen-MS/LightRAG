@@ -511,7 +511,7 @@ def create_document_routes(
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -578,7 +578,7 @@ def create_document_routes(
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -644,7 +644,7 @@ def create_document_routes(
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -721,7 +721,7 @@ def create_document_routes(
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -784,7 +784,7 @@ def create_document_routes(
                 DocStatus.PROCESSED,
                 DocStatus.FAILED,
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,

@@ -159,7 +159,7 @@ def create_app(args, rag_instance_manager):
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,

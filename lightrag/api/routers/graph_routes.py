@@ -35,7 +35,7 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -74,7 +74,7 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
             storage_access_token = extract_token_value(
                 storage_access_token, "Storage_Access_Token"
             )
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,

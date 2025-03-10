@@ -10,7 +10,6 @@ from azure.storage.blob import BlobLeaseClient, BlobClient, ContainerClient
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
-from starlette.status import HTTP_403_FORBIDDEN
 from .. import LightRAG
 from ..az_token_credential import LightRagTokenCredential
 from ..base import InitializeStatus
@@ -46,11 +45,11 @@ def get_api_key_dependency(api_key: Optional[str]):
     ):
         if not api_key_header_value:
             raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN, detail="API Key required"
+                status_code=403, detail="API Key required"
             )
         if api_key_header_value != api_key:
             raise HTTPException(
-                status_code=HTTP_403_FORBIDDEN, detail="Invalid API Key"
+                status_code=403, detail="Invalid API Key"
             )
         return api_key_header_value
 
@@ -285,7 +284,7 @@ async def wait_for_storage_initialization(
     raise HTTPException(status_code=500, detail="Storage initialization failed...")
 
 
-def initialize_rag_with_header(
+async def initialize_rag_with_header(
     rag_instance_manager,
     storage_account_url,
     storage_container_name,
@@ -295,9 +294,9 @@ def initialize_rag_with_header(
 ):
     try:
         if x_affinity_token:
-            rag = rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
+            rag = await rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
         else:
-            rag = rag_instance_manager.get_lightrag(
+            rag = await rag_instance_manager.get_lightrag(
                 storage_account_url=storage_account_url,
                 storage_container_name=storage_container_name,
                 access_token=get_lightrag_token_credential(

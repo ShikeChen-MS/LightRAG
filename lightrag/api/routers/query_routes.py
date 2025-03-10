@@ -173,7 +173,7 @@ def create_query_routes(
             lightrag_token = get_lightrag_token_credential(
                 storage_access_token, storage_token_expiry
             )
-            rag: LightRAG = initialize_rag_with_header(
+            rag: LightRAG = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -234,7 +234,7 @@ def create_query_routes(
                 storage_access_token, storage_token_expiry
             )
             param = request.to_query_params(False)
-            rag: LightRAG = initialize_rag_with_header(
+            rag: LightRAG = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
@@ -303,7 +303,7 @@ def create_query_routes(
                 storage_access_token, storage_token_expiry
             )
             param = request.to_query_params(True)
-            rag = initialize_rag_with_header(
+            rag = await initialize_rag_with_header(
                 rag_instance_manager,
                 storage_account_url,
                 storage_container_name,

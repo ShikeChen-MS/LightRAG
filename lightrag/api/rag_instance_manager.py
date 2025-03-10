@@ -163,20 +163,16 @@ class RAGInstanceManager:
                 )
         return self.rag_instances[affinity_token]
 
-    def get_lightrag(self, *args, **kwargs) -> LightRAG:
+    async def get_lightrag(self, *args, **kwargs) -> LightRAG:
         if self.instance is None:
             raise ValueError(
                 "RAGInstanceManager is not initialized. No LightRAG instances available."
             )
-        loop = always_get_an_event_loop()
-        return loop.run_until_complete(self.instance.get_rag_instance(*args, **kwargs))
+        return await self.instance.get_rag_instance(*args, **kwargs)
 
-    def get_lightrag_by_affinity_token(self, affinity_token: str) -> LightRAG:
+    async def get_lightrag_by_affinity_token(self, affinity_token: str) -> LightRAG:
         if self.instance is None:
             raise ValueError(
                 "RAGInstanceManager is not initialized. No LightRAG instances available."
             )
-        loop = always_get_an_event_loop()
-        return loop.run_until_complete(
-            self.instance.get_rag_instance_by_affinity_token(affinity_token)
-        )
+        return await self.instance.get_rag_instance_by_affinity_token(affinity_token)
