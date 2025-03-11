@@ -26,7 +26,6 @@ from ..base import (
     DocStatusStorage,
 )
 from ..namespace import NameSpace, is_namespace
-from ..utils import logger
 
 if sys.platform.startswith("win"):
     import asyncio.windows_events
