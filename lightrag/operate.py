@@ -1185,7 +1185,7 @@ async def _get_node_data(
     )
 
     # build prompt
-    entites_section_list = [["id", "entity", "type", "description", "rank"]]
+    entites_section_list = [["id", "entity", "type", "description", "input_source_id", "rank"]]
     for i, n in enumerate(node_datas):
         entites_section_list.append(
             [
@@ -1193,6 +1193,7 @@ async def _get_node_data(
                 n["entity_name"],
                 n.get("entity_type", "UNKNOWN"),
                 n.get("description", "UNKNOWN"),
+                n["input_source_id"],
                 n["rank"],
             ]
         )
@@ -1206,6 +1207,7 @@ async def _get_node_data(
             "description",
             "keywords",
             "weight",
+            "input_source_id",
             "rank",
             "created_at",
         ]
@@ -1223,6 +1225,7 @@ async def _get_node_data(
                 e["description"],
                 e["keywords"],
                 e["weight"],
+                e["input_source_id"],
                 e["rank"],
                 created_at,
             ]
@@ -1402,6 +1405,7 @@ async def _get_edge_data(
             "src_id": k["src_id"],
             "tgt_id": k["tgt_id"],
             "rank": d,
+            "input_source_id": k["input_source_id"],
             "created_at": k.get("__created_at__", None),
             **v,
         }
@@ -1437,6 +1441,7 @@ async def _get_edge_data(
             "keywords",
             "weight",
             "rank",
+            "input_source_id",
             "created_at",
         ]
     ]
@@ -1454,12 +1459,13 @@ async def _get_edge_data(
                 e["keywords"],
                 e["weight"],
                 e["rank"],
+                e["input_source_id"],
                 created_at,
             ]
         )
     relations_context = list_of_list_to_csv(relations_section_list)
 
-    entites_section_list = [["id", "entity", "type", "description", "rank"]]
+    entites_section_list = [["id", "entity", "type", "description", "input_source_id", "rank"]]
     for i, n in enumerate(use_entities):
         entites_section_list.append(
             [
@@ -1467,6 +1473,7 @@ async def _get_edge_data(
                 n["entity_name"],
                 n.get("entity_type", "UNKNOWN"),
                 n.get("description", "UNKNOWN"),
+                n["input_source_id"],
                 n["rank"],
             ]
         )
