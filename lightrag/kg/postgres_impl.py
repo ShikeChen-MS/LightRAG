@@ -1,14 +1,13 @@
 import asyncio
 import json
+import logging
 import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Union, final
 import numpy as np
 import configparser
-
 from lightrag.types import KnowledgeGraph
-
 import sys
 from tenacity import (
     retry,
@@ -16,7 +15,6 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
-
 from ..base import (
     BaseGraphStorage,
     BaseKVStorage,
@@ -26,14 +24,12 @@ from ..base import (
     DocStatusStorage,
 )
 from ..namespace import NameSpace, is_namespace
+import asyncpg
+from asyncpg import Pool
 
 if sys.platform.startswith("win"):
     import asyncio.windows_events
-
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-import asyncpg
-from asyncpg import Pool
 
 
 class PostgreSQLDB:
@@ -63,11 +59,11 @@ class PostgreSQLDB:
                 max_size=self.max,
             )
 
-            logger.info(
+            logging.info(
                 f"PostgreSQL, Connected to database at {self.host}:{self.port}/{self.database}"
             )
         except Exception as e:
-            logger.error(
+            logging.error(
                 f"PostgreSQL, Failed to connect database at {self.host}:{self.port}/{self.database}, Got:{e}"
             )
             raise
@@ -101,13 +97,13 @@ class PostgreSQLDB:
                 await self.query(f"SELECT 1 FROM {k} LIMIT 1")
             except Exception:
                 try:
-                    logger.info(f"PostgreSQL, Try Creating table {k} in database")
+                    logging.info(f"PostgreSQL, Try Creating table {k} in database")
                     await self.execute(v["ddl"])
-                    logger.info(
+                    logging.info(
                         f"PostgreSQL, Creation success table {k} in PostgreSQL database"
                     )
                 except Exception as e:
-                    logger.error(
+                    logging.error(
                         f"PostgreSQL, Failed to create table {k} in database, Please verify the connection with PostgreSQL database, Got: {e}"
                     )
                     raise e
@@ -146,7 +142,7 @@ class PostgreSQLDB:
                         data = None
                 return data
             except Exception as e:
-                logger.error(f"PostgreSQL database, error:{e}")
+                logging.error(f"PostgreSQL database, error:{e}")
                 raise
 
     async def execute(
@@ -175,9 +171,9 @@ class PostgreSQLDB:
             if upsert:
                 print("Key value duplicate, but upsert succeeded.")
             else:
-                logger.error(f"Upsert error: {e}")
+                logging.error(f"Upsert error: {e}")
         except Exception as e:
-            logger.error(f"PostgreSQL database,\nsql:{sql},\ndata:{data},\nerror:{e}")
+            logging.error(f"PostgreSQL database,\nsql:{sql},\ndata:{data},\nerror:{e}")
             raise
 
 
@@ -236,7 +232,7 @@ class ClientManager:
                     cls._instances["ref_count"] -= 1
                     if cls._instances["ref_count"] == 0:
                         await db.pool.close()
-                        logger.info("Closed PostgreSQL database connection pool")
+                        logging.info("Closed PostgreSQL database connection pool")
                         cls._instances["db"] = None
                 else:
                     await db.pool.close()
@@ -334,14 +330,14 @@ class PGKVStorage(BaseKVStorage):
             new_keys = set([s for s in keys if s not in exist_keys])
             return new_keys
         except Exception as e:
-            logger.error(
+            logging.error(
                 f"PostgreSQL database,\nsql:{sql},\nparams:{params},\nerror:{e}"
             )
             raise
 
     ################ INSERT METHODS ################
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
-        logger.info(f"Inserting {len(data)} to {self.namespace}")
+        logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
 
@@ -419,7 +415,7 @@ class PGVectorStorage(BaseVectorStorage):
                 "content_vector": json.dumps(item["__vector__"].tolist()),
             }
         except Exception as e:
-            logger.error(f"Error to prepare upsert,\nsql: {e}\nitem: {item}")
+            logging.error(f"Error to prepare upsert,\nsql: {e}\nitem: {item}")
             raise
 
         return upsert_sql, data
@@ -448,7 +444,7 @@ class PGVectorStorage(BaseVectorStorage):
         return upsert_sql, data
 
     async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
-        logger.info(f"Inserting {len(data)} to {self.namespace}")
+        logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
 
@@ -545,7 +541,7 @@ class PGDocStatusStorage(DocStatusStorage):
             print(f"new_keys: {new_keys}")
             return new_keys
         except Exception as e:
-            logger.error(
+            logging.error(
                 f"PostgreSQL database,\nsql:{sql},\nparams:{params},\nerror:{e}"
             )
             raise
@@ -614,7 +610,7 @@ class PGDocStatusStorage(DocStatusStorage):
         Args:
             data: dictionary of document IDs and their status data
         """
-        logger.info(f"Inserting {len(data)} to {self.namespace}")
+        logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
 
@@ -1041,7 +1037,7 @@ class PGGraphStorage(BaseGraphStorage):
             await self._query(query, readonly=False, upsert=True)
 
         except Exception as e:
-            logger.error("POSTGRES, Error during upsert: {%s}", e)
+            logging.error("POSTGRES, Error during upsert: {%s}", e)
             raise
 
     @retry(
@@ -1082,7 +1078,7 @@ class PGGraphStorage(BaseGraphStorage):
             await self._query(query, readonly=False, upsert=True)
 
         except Exception as e:
-            logger.error("Error during edge upsert: {%s}", e)
+            logging.error("Error during edge upsert: {%s}", e)
             raise
 
     async def _node2vec_embed(self):
