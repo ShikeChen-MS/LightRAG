@@ -3,6 +3,7 @@ import threading
 from typing import Any
 from ..lightrag import LightRAG
 from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
+from ..postgresql import PostgreSQLDB
 from ..types import GPTKeywordExtractionFormat
 from ..utils import EmbeddingFunc
 
@@ -82,6 +83,16 @@ class RAGInstanceManager:
                 api_version=self.args.embedding_api_version,
             ),
         )
+        config = {
+            "host": db_url,
+            "port": 6432,  # always use 6432 to connect to PGBouncer for connection pooling
+            "user": db_user_name,
+            "password": db_access_token,
+            "database": db_name,
+        }
+        db = PostgreSQLDB(config)
+        await db.initdb()
+        await db.check_tables()
         rag = LightRAG(
             working_dir=self.args.working_dir,
             scan_progress={

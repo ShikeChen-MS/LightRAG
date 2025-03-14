@@ -25,7 +25,6 @@ from .base import (
     StoragesStatus,
     InitializeStatus,
 )
-from .kg.postgres_impl import ClientManager
 from .namespace import NameSpace, make_namespace
 from .operate import (
     chunking_by_token_size,
@@ -36,6 +35,7 @@ from .operate import (
     mix_kg_vector_query,
     naive_query,
 )
+from .postgresql import PostgreSQLDB
 from .prompt import GRAPH_FIELD_SEP
 from .utils import (
     EmbeddingFunc,
@@ -64,6 +64,7 @@ class LightRAG:
 
     def __init__(
         self,
+        db: PostgreSQLDB,
         scan_progress: Dict[str, Any],
         progress_lock: threading.Lock,
         db_url: str,
@@ -92,6 +93,7 @@ class LightRAG:
         # stays same for all these users given this instance can handle all these requests
         # each instance of LightRAG will be dedicated to specific storage
         # without further initializing more LightRAG instances
+        self.db = db
         self.scan_progress: Dict[str, Any] = scan_progress
         self.progress_lock = progress_lock
         self.db_url: str = db_url
@@ -107,7 +109,6 @@ class LightRAG:
         self.chunk_token_size: int = chunk_token_size
         self.chunk_overlap_token_size: int = chunk_overlap_token_size
         self.tiktoken_model_name: str = "gpt-4o"
-        self.client_manager = ClientManager()
         self.chunking_func: Callable[
             [
                 str,
@@ -238,6 +239,7 @@ class LightRAG:
                 self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
             ),
             embedding_func=self.embedding_func,
+            db = self.db
         )
 
         self.full_docs: BaseKVStorage = self.key_string_value_json_storage_cls(  # type: ignore
@@ -245,18 +247,21 @@ class LightRAG:
                 self.namespace_prefix, NameSpace.KV_STORE_FULL_DOCS
             ),
             embedding_func=self.embedding_func,
+            db = self.db
         )
         self.text_chunks: BaseKVStorage = self.key_string_value_json_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.KV_STORE_TEXT_CHUNKS
             ),
             embedding_func=self.embedding_func,
+            db = self.db
         )
         self.chunk_entity_relation_graph: BaseGraphStorage = self.graph_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.GRAPH_STORE_CHUNK_ENTITY_RELATION
             ),
             embedding_func=self.embedding_func,
+            db = self.db
         )
 
         self.entities_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
@@ -265,6 +270,7 @@ class LightRAG:
             ),
             embedding_func=self.embedding_func,
             meta_fields={"entity_name", "input_source_id"},
+            db = self.db
         )
         self.relationships_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=make_namespace(
@@ -272,12 +278,14 @@ class LightRAG:
             ),
             embedding_func=self.embedding_func,
             meta_fields={"src_id", "tgt_id", "input_source_id"},
+            db = self.db
         )
         self.chunks_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.VECTOR_STORE_CHUNKS
             ),
             embedding_func=self.embedding_func,
+            db = self.db
         )
 
         # Initialize document status storage
@@ -285,6 +293,7 @@ class LightRAG:
             namespace=make_namespace(self.namespace_prefix, NameSpace.DOC_STATUS),
             global_config=global_config,
             embedding_func=None,
+            db = self.db
         )
         if self.llm_response_cache and hasattr(
             self.llm_response_cache, "global_config"
@@ -296,6 +305,7 @@ class LightRAG:
                     self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                 ),
                 embedding_func=self.embedding_func,
+                db = self.db
             )
 
         self.llm_model_func = limit_async_func_call(self.llm_model_max_async)(
@@ -306,41 +316,6 @@ class LightRAG:
             )
         )
         self._storages_status = StoragesStatus.CREATED
-
-
-    async def initialize_storages(self, db_user_name: str, db_access_token: str):
-        """Asynchronously initialize the storages"""
-        if self._storages_status == StoragesStatus.CREATED:
-            self._storages_status = StoragesStatus.INITIALIZING
-            tasks = []
-            try:
-                for storage in (
-                    self.full_docs,
-                    self.text_chunks,
-                    self.entities_vdb,
-                    self.relationships_vdb,
-                    self.chunks_vdb,
-                    self.chunk_entity_relation_graph,
-                    self.llm_response_cache,
-                    self.doc_status,
-                ):
-                    if storage:
-                        tasks.append(
-                            storage.initialize(
-                                self.client_manager,
-                                self.db_url,
-                                self.db_name,
-                                db_user_name,
-                                db_access_token
-                            )
-                        )
-                await asyncio.gather(*tasks)
-            except Exception as e:
-                logging.error(f"Failed to initialize storages: {str(e)}")
-                raise e
-            self._storages_status = StoragesStatus.INITIALIZED
-            self.initialize_status = InitializeStatus.INITIALIZED
-            logging.info("Initialized Storages")
 
     async def clear_storages(self):
         """Asynchronously clear storages"""
@@ -367,26 +342,8 @@ class LightRAG:
 
     async def finalize_storages(self):
         """Asynchronously finalize the storages"""
-        if self._storages_status == StoragesStatus.INITIALIZED:
-            tasks = []
-
-            for storage in (
-                self.full_docs,
-                self.text_chunks,
-                self.entities_vdb,
-                self.relationships_vdb,
-                self.chunks_vdb,
-                self.chunk_entity_relation_graph,
-                self.llm_response_cache,
-                self.doc_status,
-            ):
-                if storage:
-                    tasks.append(storage.finalize(self.client_manager))
-
-            await asyncio.gather(*tasks)
-
-            self._storages_status = StoragesStatus.FINALIZED
-            logging.debug("Finalized Storages")
+        await self.db.pool.close()
+        logging.debug("Finalized Storages")
 
     async def get_graph_labels(self):
         text = await self.chunk_entity_relation_graph.get_all_labels()

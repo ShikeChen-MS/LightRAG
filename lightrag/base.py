@@ -13,8 +13,6 @@ from typing import (
     TypeVar,
 )
 import numpy as np
-
-from .kg.postgres_impl import ClientManager
 from .utils import EmbeddingFunc
 from .types import KnowledgeGraph
 
@@ -90,21 +88,6 @@ class QueryParam:
 class StorageNameSpace(ABC):
     namespace: str
     global_config: dict[str, Any]
-
-    async def initialize(
-        self,
-        client_manager: ClientManager,
-        db_server_url: str,
-        db_name: str,
-        db_user: str,
-        access_token: str,
-    ) -> None:
-        """Initialize the storage"""
-        pass
-
-    async def finalize(self, client_manager: ClientManager):
-        """Finalize the storage"""
-        pass
 
     @abstractmethod
     async def index_done_callback(self) -> None:
