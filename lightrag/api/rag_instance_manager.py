@@ -94,7 +94,6 @@ class RAGInstanceManager:
         await db.initdb()
         await db.check_tables()
         rag = LightRAG(
-            working_dir=self.args.working_dir,
             scan_progress={
                 "is_scanning": False,
                 "current_file": "",
@@ -134,5 +133,4 @@ class RAGInstanceManager:
             cosine_threshold=self.args.cosine_threshold,
         )
         await rag.create_storages()
-        await rag.initialize_storages(db_user_name, db_access_token)
         return rag

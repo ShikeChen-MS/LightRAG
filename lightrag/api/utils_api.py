@@ -52,18 +52,15 @@ def get_api_key_dependency(api_key: Optional[str]):
 
 
 class DefaultRAGStorageConfig:
-    KV_STORAGE = "JsonKVStorage"
-    VECTOR_STORAGE = "NanoVectorDBStorage"
-    GRAPH_STORAGE = "NetworkXStorage"
-    DOC_STATUS_STORAGE = "JsonDocStatusStorage"
+    KV_STORAGE = "PGKVStorage"
+    VECTOR_STORAGE = "PGVectorStorage"
+    GRAPH_STORAGE = "PGGraphStorage"
+    DOC_STATUS_STORAGE = "PGDocStatusStorage"
 
 
 def get_default_host(binding_type: str) -> str:
     default_hosts = {
-        "ollama": os.getenv("LLM_BINDING_HOST", "http://localhost:11434"),
-        "lollms": os.getenv("LLM_BINDING_HOST", "http://localhost:9600"),
         "azure_openai": os.getenv("AZURE_OPENAI_ENDPOINT", "https://api.openai.com/v1"),
-        "openai": os.getenv("LLM_BINDING_HOST", "https://api.openai.com/v1"),
     }
     return default_hosts.get(
         binding_type, os.getenv("LLM_BINDING_HOST", "http://localhost:11434")

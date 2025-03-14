@@ -319,7 +319,7 @@ class LightRAG:
 
     async def clear_storages(self):
         """Asynchronously clear storages"""
-        if self._storages_status == StoragesStatus.INITIALIZED:
+        if self._storages_status == StoragesStatus.CREATED:
             tasks = []
 
             for storage in (
@@ -337,8 +337,7 @@ class LightRAG:
 
             await asyncio.gather(*tasks)
 
-            self._storages_status = StoragesStatus.FINALIZED
-            logging.debug("Finalized Storages")
+            logging.info("All storages cleared")
 
     async def finalize_storages(self):
         """Asynchronously finalize the storages"""

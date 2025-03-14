@@ -299,8 +299,6 @@ class StoragesStatus(str, Enum):
 
     NOT_CREATED = "not_created"
     CREATED = "created"
-    INITIALIZING = "initializing"
-    INITIALIZED = "initialized"
     FINALIZED = "finalized"
 
 

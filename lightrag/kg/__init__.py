@@ -1,25 +1,22 @@
 STORAGE_IMPLEMENTATIONS = {
     "KV_STORAGE": {
-        "implementations": ["JsonKVStorage", "PGKVStorage"],
+        "implementations": ["PGKVStorage"],
         "required_methods": ["get_by_id", "upsert"],
     },
     "GRAPH_STORAGE": {
         "implementations": [
-            "NetworkXStorage",
             "PGGraphStorage",
         ],
         "required_methods": ["upsert_node", "upsert_edge"],
     },
     "VECTOR_STORAGE": {
         "implementations": [
-            "NanoVectorDBStorage",
             "PGVectorStorage",
         ],
         "required_methods": ["query", "upsert"],
     },
     "DOC_STATUS_STORAGE": {
         "implementations": [
-            "JsonDocStatusStorage",
             "PGDocStatusStorage",
         ],
         "required_methods": ["get_docs_by_status"],
