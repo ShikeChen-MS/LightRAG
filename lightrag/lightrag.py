@@ -7,8 +7,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
-from .document_manager import DocumentManager
-from .az_token_credential import LightRagTokenCredential
 from typing import Any, AsyncIterator, Callable, Iterator, cast, final, Dict
 from .kg import (
     STORAGE_ENV_REQUIREMENTS,
@@ -27,6 +25,7 @@ from .base import (
     StoragesStatus,
     InitializeStatus,
 )
+from .kg.postgres_impl import ClientManager
 from .namespace import NameSpace, make_namespace
 from .operate import (
     chunking_by_token_size,
@@ -65,12 +64,10 @@ class LightRAG:
 
     def __init__(
         self,
-        affinity_token: str,
-        working_dir: str,
         scan_progress: Dict[str, Any],
         progress_lock: threading.Lock,
-        storage_account_url: str,
-        storage_container_name: str,
+        db_url: str,
+        db_name: str,
         llm_model_func: Callable[..., object],
         chunk_token_size: int,
         chunk_overlap_token_size: int,
@@ -79,7 +76,6 @@ class LightRAG:
         llm_model_max_async: int,
         llm_model_max_token_size: int,
         embedding_func: EmbeddingFunc,
-        document_manager: DocumentManager,
         kv_storage: str,
         vector_storage: str,
         graph_storage: str,
@@ -96,13 +92,10 @@ class LightRAG:
         # stays same for all these users given this instance can handle all these requests
         # each instance of LightRAG will be dedicated to specific storage
         # without further initializing more LightRAG instances
-        self.affinity_token: str = affinity_token
-        self.working_dir: str = working_dir
         self.scan_progress: Dict[str, Any] = scan_progress
         self.progress_lock = progress_lock
-        self.document_manager: DocumentManager = document_manager
-        self.storage_account_url: str = storage_account_url
-        self.storage_container_name: str = storage_container_name
+        self.db_url: str = db_url
+        self.db_name: str = db_name
         self.kv_storage: str = kv_storage
         self.vector_storage: str = vector_storage
         self.graph_storage: str = graph_storage
@@ -113,7 +106,8 @@ class LightRAG:
         self.entity_summary_to_max_tokens: int = 500
         self.chunk_token_size: int = chunk_token_size
         self.chunk_overlap_token_size: int = chunk_overlap_token_size
-        self.tiktoken_model_name: str = "gpt-4o-mini"
+        self.tiktoken_model_name: str = "gpt-4o"
+        self.client_manager = ClientManager()
         self.chunking_func: Callable[
             [
                 str,
@@ -214,7 +208,7 @@ class LightRAG:
             loop.run_until_complete(async_func())
             loop.close()
 
-    async def initialize_storages(self, storage_token: LightRagTokenCredential):
+    async def create_storages(self):
         # Initialize all storages
         global_config = self.__dict__
         self.key_string_value_json_storage_cls: type[BaseKVStorage] = (
@@ -292,7 +286,6 @@ class LightRAG:
             global_config=global_config,
             embedding_func=None,
         )
-
         if self.llm_response_cache and hasattr(
             self.llm_response_cache, "global_config"
         ):
@@ -313,9 +306,45 @@ class LightRAG:
             )
         )
         self._storages_status = StoragesStatus.CREATED
+
+
+    async def initialize_storages(self, db_user_name: str, db_access_token: str):
         """Asynchronously initialize the storages"""
         if self._storages_status == StoragesStatus.CREATED:
             self._storages_status = StoragesStatus.INITIALIZING
+            tasks = []
+            try:
+                for storage in (
+                    self.full_docs,
+                    self.text_chunks,
+                    self.entities_vdb,
+                    self.relationships_vdb,
+                    self.chunks_vdb,
+                    self.chunk_entity_relation_graph,
+                    self.llm_response_cache,
+                    self.doc_status,
+                ):
+                    if storage:
+                        tasks.append(
+                            storage.initialize(
+                                self.client_manager,
+                                self.db_url,
+                                self.db_name,
+                                db_user_name,
+                                db_access_token
+                            )
+                        )
+                await asyncio.gather(*tasks)
+            except Exception as e:
+                logging.error(f"Failed to initialize storages: {str(e)}")
+                raise e
+            self._storages_status = StoragesStatus.INITIALIZED
+            self.initialize_status = InitializeStatus.INITIALIZED
+            logging.info("Initialized Storages")
+
+    async def clear_storages(self):
+        """Asynchronously clear storages"""
+        if self._storages_status == StoragesStatus.INITIALIZED:
             tasks = []
 
             for storage in (
@@ -329,18 +358,12 @@ class LightRAG:
                 self.doc_status,
             ):
                 if storage:
-                    tasks.append(
-                        storage.initialize(
-                            self.storage_account_url,
-                            self.storage_container_name,
-                            storage_token,
-                        )
-                    )
+                    tasks.append(storage.drop())
+
             await asyncio.gather(*tasks)
 
-            self._storages_status = StoragesStatus.INITIALIZED
-            self.initialize_status = InitializeStatus.INITIALIZED
-            logging.info("Initialized Storages")
+            self._storages_status = StoragesStatus.FINALIZED
+            logging.debug("Finalized Storages")
 
     async def finalize_storages(self):
         """Asynchronously finalize the storages"""
@@ -358,7 +381,7 @@ class LightRAG:
                 self.doc_status,
             ):
                 if storage:
-                    tasks.append(storage.finalize())
+                    tasks.append(storage.finalize(self.client_manager))
 
             await asyncio.gather(*tasks)
 
@@ -388,29 +411,18 @@ class LightRAG:
 
     def insert(
         self,
-        storage_account_url: str,
-        storage_container_name: str,
-        storage_access_token: LightRagTokenCredential,
+        ai_access_token: str,
         input: str | list[str],
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
         ids: str | list[str] | None = None,
     ) -> None:
         """Sync Insert documents with checkpoint support
-
-        Args:
-            input: Single document string or list of document strings
-            split_by_character: if split_by_character is not None, split the string by character, if chunk longer than
-            split_by_character_only: if split_by_character_only is True, split the string by character only, when
-            split_by_character is None, this parameter is ignored.
-            ids: single string of the document ID or list of unique document IDs, if not provided, MD5 hash IDs will be generated
         """
         loop = always_get_an_event_loop()
         loop.run_until_complete(
             self.ainsert(
-                storage_account_url,
-                storage_container_name,
-                storage_access_token,
+                ai_access_token,
                 input,
                 split_by_character,
                 split_by_character_only,
@@ -420,9 +432,7 @@ class LightRAG:
 
     async def ainsert(
         self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+        ai_access_token:str,
         input: str | list[str],
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
@@ -430,12 +440,10 @@ class LightRAG:
     ) -> None:
         """Async Insert documents with checkpoint support"""
         await self.apipeline_enqueue_documents(
-            storage_account_url, storage_container_name, access_token, input, ids
+            ids, input
         )
         await self.apipeline_process_enqueue_documents(
-            storage_account_url,
-            storage_container_name,
-            access_token,
+            ai_access_token,
             split_by_character,
             split_by_character_only,
         )
@@ -445,9 +453,6 @@ class LightRAG:
         full_text: str,
         text_chunks: list[str],
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
         doc_id: str | list[str] | None = None,
     ) -> None:
         loop = always_get_an_event_loop()
@@ -456,9 +461,6 @@ class LightRAG:
                 full_text,
                 text_chunks,
                 ai_access_token,
-                storage_account_url,
-                storage_container_name,
-                access_token,
                 doc_id,
             )
         )
@@ -468,9 +470,6 @@ class LightRAG:
         full_text: str,
         text_chunks: list[str],
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
         doc_id: str | None = None,
     ) -> None:
         update_storage = False
@@ -523,16 +522,11 @@ class LightRAG:
 
         finally:
             if update_storage:
-                await self._insert_done(
-                    storage_account_url, storage_container_name, access_token
-                )
+                await self._insert_done()
 
     async def apipeline_enqueue_documents(
         self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-        source_ids: list[str],
+        source_ids: str | list[str],
         input: str | list[str]
     ) -> None:
         """
@@ -596,19 +590,13 @@ class LightRAG:
 
         # 5. Store status document
         await self.doc_status.upsert(
-            new_docs,
-            storage_account_url,
-            storage_container_name,
-            access_token,
+            new_docs
         )
         logging.info(f"Stored {len(new_docs)} new unique documents")
 
     async def apipeline_process_enqueue_documents(
         self,
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
     ) -> None:
@@ -689,10 +677,7 @@ class LightRAG:
                                     "content_length": status_doc.content_length,
                                     "created_at": status_doc.created_at,
                                 }
-                            },
-                            storage_account_url,
-                            storage_container_name,
-                            access_token,
+                            }
                         ),
                         self.chunks_vdb.upsert(chunks, ai_access_token),
                         self._process_entity_relation_graph(ai_access_token, chunks),
@@ -715,10 +700,7 @@ class LightRAG:
                                     "created_at": status_doc.created_at,
                                     "updated_at": datetime.now().isoformat(),
                                 }
-                            },
-                            storage_account_url,
-                            storage_container_name,
-                            access_token,
+                            }
                         )
                     except Exception as e:
                         logging.error(f"Failed to process document {doc_id}: {str(e)}")
@@ -734,10 +716,7 @@ class LightRAG:
                                     "created_at": status_doc.created_at,
                                     "updated_at": datetime.now().isoformat(),
                                 }
-                            },
-                            storage_account_url,
-                            storage_container_name,
-                            access_token,
+                            }
                         )
                         continue
                 logging.info(f"Completed batch {batch_idx + 1} of {len(docs_batches)}.")
@@ -745,9 +724,7 @@ class LightRAG:
             batches.append(batch(batch_idx, docs_batch, len(docs_batches)))
 
         await asyncio.gather(*batches)
-        await self._insert_done(
-            storage_account_url, storage_container_name, access_token
-        )
+        await self._insert_done()
 
     async def _process_entity_relation_graph(
         self, ai_access_token: str, chunk: dict[str, Any]
@@ -766,16 +743,9 @@ class LightRAG:
             logging.error("Failed to extract entities and relationships")
             raise e
 
-    async def _insert_done(
-        self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-    ) -> None:
+    async def _insert_done(self) -> None:
         tasks = [
-            cast(StorageNameSpace, storage_inst).index_done_callback(
-                storage_account_url, storage_container_name, access_token
-            )
+            cast(StorageNameSpace, storage_inst).index_done_callback()
             for storage_inst in [  # type: ignore
                 self.full_docs,
                 self.text_chunks,
@@ -793,18 +763,12 @@ class LightRAG:
     def insert_custom_kg(
         self,
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
         custom_kg: dict[str, Any],
     ) -> None:
         loop = always_get_an_event_loop()
         loop.run_until_complete(
             self.ainsert_custom_kg(
                 ai_access_token,
-                storage_account_url,
-                storage_container_name,
-                access_token,
                 custom_kg,
             )
         )
@@ -812,9 +776,6 @@ class LightRAG:
     async def ainsert_custom_kg(
         self,
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
         custom_kg: dict[str, Any],
     ) -> None:
         update_storage = False
@@ -962,9 +923,7 @@ class LightRAG:
 
         finally:
             if update_storage:
-                await self._insert_done(
-                    storage_account_url, storage_container_name, access_token
-                )
+                await self._insert_done()
 
     def query(
         self,
@@ -983,9 +942,6 @@ class LightRAG:
         self,
         query: str,
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        storage_access_token: LightRagTokenCredential,
         param: QueryParam = QueryParam(),
         system_prompt: str | None = None,
     ) -> str | AsyncIterator[str]:
@@ -1065,17 +1021,12 @@ class LightRAG:
             )
         else:
             raise ValueError(f"Unknown mode {param.mode}")
-        await self._query_done(
-            storage_account_url, storage_container_name, storage_access_token
-        )
+        await self._query_done()
         return response
 
     def query_with_separate_keyword_extraction(
         self,
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        storage_access_token: LightRagTokenCredential,
         query: str,
         prompt: str,
         param: QueryParam = QueryParam(),
@@ -1088,9 +1039,6 @@ class LightRAG:
         return loop.run_until_complete(
             self.aquery_with_separate_keyword_extraction(
                 ai_access_token,
-                storage_account_url,
-                storage_container_name,
-                storage_access_token,
                 query,
                 prompt,
                 param,
@@ -1100,9 +1048,6 @@ class LightRAG:
     async def aquery_with_separate_keyword_extraction(
         self,
         ai_access_token: str,
-        storage_account_url: str,
-        storage_container_name: str,
-        storage_access_token: LightRagTokenCredential,
         query: str,
         prompt: str,
         param: QueryParam = QueryParam(),
@@ -1211,20 +1156,11 @@ class LightRAG:
         else:
             raise ValueError(f"Unknown mode {param.mode}")
 
-        await self._query_done(
-            storage_account_url, storage_container_name, storage_access_token
-        )
+        await self._query_done()
         return response
 
-    async def _query_done(
-        self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-    ):
-        await self.llm_response_cache.index_done_callback(
-            storage_account_url, storage_container_name, access_token
-        )
+    async def _query_done(self):
+        await self.llm_response_cache.index_done_callback()
 
     def delete_by_entity(self, entity_name: str) -> None:
         loop = always_get_an_event_loop()
@@ -1292,9 +1228,6 @@ class LightRAG:
 
     async def adelete_by_doc_id(
         self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
         doc_id: str,
     ) -> None:
         """Delete a document and all its related data
@@ -1438,9 +1371,7 @@ class LightRAG:
             await self.doc_status.delete([doc_id])
 
             # 7. Ensure all indexes are updated
-            await self._insert_done(
-                storage_account_url, storage_container_name, access_token
-            )
+            await self._insert_done()
 
             logging.info(
                 f"Successfully deleted document {doc_id} and related data. "

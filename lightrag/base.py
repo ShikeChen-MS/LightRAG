@@ -13,7 +13,8 @@ from typing import (
     TypeVar,
 )
 import numpy as np
-from lightrag.az_token_credential import LightRagTokenCredential
+
+from .kg.postgres_impl import ClientManager
 from .utils import EmbeddingFunc
 from .types import KnowledgeGraph
 
@@ -92,25 +93,26 @@ class StorageNameSpace(ABC):
 
     async def initialize(
         self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+        client_manager: ClientManager,
+        db_server_url: str,
+        db_name: str,
+        db_user: str,
+        access_token: str,
     ) -> None:
         """Initialize the storage"""
         pass
 
-    async def finalize(self):
+    async def finalize(self, client_manager: ClientManager):
         """Finalize the storage"""
         pass
 
     @abstractmethod
-    async def index_done_callback(
-        self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-    ) -> None:
+    async def index_done_callback(self) -> None:
         """Commit the storage operations after indexing"""
+
+    @abstractmethod
+    async def drop(self)-> None:
+        """Clear the storage"""
 
 
 @dataclass
@@ -167,12 +169,7 @@ class BaseKVStorage(StorageNameSpace, ABC):
         """Upsert data"""
 
     @abstractmethod
-    async def clear(
-        self,
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
-    ) -> None:
+    async def clear(self) -> None:
         """Clear all data"""
 
 
@@ -309,10 +306,7 @@ class DocStatusStorage(StorageNameSpace, ABC):
     @abstractmethod
     async def upsert(
         self,
-        data: dict[str, dict[str, Any]],
-        storage_account_url: str,
-        storage_container_name: str,
-        access_token: LightRagTokenCredential,
+        data: dict[str, dict[str, Any]]
     ) -> None:
         """Upsert data"""
 

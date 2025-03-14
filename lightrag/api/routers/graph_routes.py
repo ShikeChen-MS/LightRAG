@@ -8,9 +8,6 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import JSONResponse
 from ..utils_api import (
     get_api_key_dependency,
-    initialize_rag_with_header,
-    wait_for_storage_initialization,
-    get_lightrag_token_credential,
     extract_token_value,
 )
 
@@ -22,32 +19,23 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
 
     @router.get("/graph/label/list", dependencies=[Depends(optional_api_key)])
     async def get_graph_labels(
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+        db_url: str = Header(alias="DB_Url"),
+        db_name: str = Header(alias="DB_Name"),
+        db_user_name: str = Header(alias="DB_User_Name"),
+        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
+        db_access_token: str = Header(alias="DB_Access_Token"),
     ):
         """Get all graph labels"""
+        rag = None
         try:
             storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
+                db_access_token, "DB_Access_Token"
             )
-            rag = await initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
+            rag = await rag_instance_manager.get_rag_instance(
+                db_url=db_url,
+                db_name=db_name,
+                db_user_name=db_user_name,
+                db_access_token=storage_access_token,
             )
             res = await rag.get_graph_labels()
             return JSONResponse(
@@ -56,37 +44,31 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if rag:
+                await rag.finalize_storages()
 
     @router.get("/graphs", dependencies=[Depends(optional_api_key)])
     async def get_knowledge_graph(
         label: str,
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+        db_url: str = Header(alias="DB_Url"),
+        db_name: str = Header(alias="DB_Name"),
+        db_user_name: str = Header(alias="DB_User_Name"),
+        ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
+        db_access_token: str = Header(alias="DB_Access_Token"),
         max_depth: int = 3,
     ):
         """Get knowledge graph for a specific label"""
+        rag = None
         try:
             storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
+                db_access_token, "DB_Access_Token"
             )
-            rag = await initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
+            rag = await rag_instance_manager.get_rag_instance(
+                db_url=db_url,
+                db_name=db_name,
+                db_user_name=db_user_name,
+                db_access_token=storage_access_token,
             )
             res = await rag.get_knowledge_graph(node_label=label, max_depth=max_depth)
             return JSONResponse(
@@ -95,5 +77,8 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if rag:
+                await rag.finalize_storages()
 
     return router

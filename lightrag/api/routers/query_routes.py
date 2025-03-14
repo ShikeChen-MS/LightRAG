@@ -12,13 +12,10 @@ from fastapi import (
     HTTPException,
     Header,
 )
-from ... import LightRAG
+from fastapi.responses import StreamingResponse
 from ...base import QueryParam
 from ..utils_api import (
     get_api_key_dependency,
-    initialize_rag_with_header,
-    wait_for_storage_initialization,
-    get_lightrag_token_credential,
     extract_token_value,
 )
 from pydantic import BaseModel, Field, field_validator
@@ -155,178 +152,113 @@ def create_query_routes(
 
     @router.delete("/query/cache", dependencies=[Depends(optional_api_key)])
     async def clear_query_cache(
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
+        db_url: str = Header(alias="DB_Url"),
+        db_name: str = Header(alias="DB_Name"),
+        db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+        db_access_token: str = Header(alias="DB_Access_Token"),
     ):
-        lease = None
-        blob_lease = None
         try:
             storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
+                db_access_token, "DB_Access_Token"
             )
-            lightrag_token = get_lightrag_token_credential(
-                storage_access_token, storage_token_expiry
+            rag = await rag_instance_manager.get_rag_instance(
+                db_url=db_url,
+                db_name=db_name,
+                db_user_name=db_user_name,
+                db_access_token=storage_access_token,
             )
-            rag: LightRAG = await initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
-            )
-            await rag.llm_response_cache.clear(
-                storage_account_url, storage_container_name, lightrag_token
-            )
+            await rag.llm_response_cache.clear()
             response = JSONResponse(
                 content={
                     "status": "success",
                     "message": "LLM response cache cleared successfully.",
-                },
-                headers={"X-Affinity-Token": rag.affinity_token},
+                }
             )
             return response
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
-        finally:
-            if lease:
-                lease.release()
-            if blob_lease:
-                blob_lease.release()
 
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
     )
     async def query_text(
         request: QueryRequest,
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
+        db_url: str = Header(alias="DB_Url"),
+        db_name: str = Header(alias="DB_Name"),
+        db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+        db_access_token: str = Header(alias="DB_Access_Token"),
     ):
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
         """
+        rag = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
             )
             storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
+                db_access_token, "DB_Access_Token"
             )
-            lightrag_token = get_lightrag_token_credential(
-                storage_access_token, storage_token_expiry
+            rag = await rag_instance_manager.get_rag_instance(
+                db_url=db_url,
+                db_name=db_name,
+                db_user_name=db_user_name,
+                db_access_token=storage_access_token,
             )
             param = request.to_query_params(False)
-            rag: LightRAG = await initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
-            )
             response = await rag.aquery(
                 request.query,
                 ai_access_token,
-                storage_account_url,
-                storage_container_name,
-                lightrag_token,
                 param=param,
             )
-
             # If response is a string (e.g. cache hit), return directly
             if isinstance(response, str):
-                return JSONResponse(
-                    content={"response": response},
-                    headers={"X-Affinity-Token": rag.affinity_token},
-                )
-
+                return JSONResponse(content={"response": response})
             if isinstance(response, dict):
                 result = json.dumps(response, indent=2)
-                return JSONResponse(
-                    content=result, headers={"X-Affinity-Token": rag.affinity_token}
-                )
+                return JSONResponse(content=result)
             else:
-                return JSONResponse(
-                    content=str(response),
-                    headers={"X-Affinity-Token": rag.affinity_token},
-                )
+                return JSONResponse(content=str(response))
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if rag:
+                await rag.finalize_storages()
 
     @router.post("/query/stream", dependencies=[Depends(optional_api_key)])
     async def query_text_stream(
         request: QueryRequest,
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
+        db_url: str = Header(alias="DB_Url"),
+        db_name: str = Header(alias="DB_Name"),
+        db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+        db_access_token: str = Header(alias="DB_Access_Token"),
     ):
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
         """
+        rag = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
             )
             storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
+                db_access_token, "DB_Access_Token"
             )
-            lightrag_token = get_lightrag_token_credential(
-                storage_access_token, storage_token_expiry
+            rag = await rag_instance_manager.get_rag_instance(
+                db_url=db_url,
+                db_name=db_name,
+                db_user_name=db_user_name,
+                db_access_token=storage_access_token,
             )
-            param = request.to_query_params(True)
-            rag = await initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
-            )
-            await wait_for_storage_initialization(
-                rag,
-                get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
-            )
+            param = request.to_query_params(False)
             response = await rag.aquery(
                 request.query,
                 ai_access_token,
-                storage_account_url,
-                storage_container_name,
-                lightrag_token,
                 param=param,
             )
-            from fastapi.responses import StreamingResponse
-
             async def stream_generator():
                 if isinstance(response, str):
                     # If it's a string, send it all at once
@@ -348,11 +280,13 @@ def create_query_routes(
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "Content-Type": "application/x-ndjson",
-                    "X-Affinity-Token": rag.affinity_token,
                     "X-Accel-Buffering": "no",  # Ensure proper handling of streaming response when proxied by Nginx
                 },
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if rag:
+                await rag.finalize_storages()
 
     return router

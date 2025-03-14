@@ -6,14 +6,9 @@ import asyncio
 import os
 import argparse
 from typing import Optional
-from azure.storage.blob import BlobLeaseClient, BlobClient, ContainerClient
 from fastapi import HTTPException, Security
 from dotenv import load_dotenv
 from fastapi.security import APIKeyHeader
-from .. import LightRAG
-from ..az_token_credential import LightRagTokenCredential
-from ..base import InitializeStatus
-import logging
 
 # Load environment variables
 load_dotenv(override=True)
@@ -272,67 +267,6 @@ def parse_args() -> argparse.Namespace:
     args.chunk_overlap_size = get_env_value("CHUNK_OVERLAP_SIZE", 100, int)
 
     return args
-
-
-async def wait_for_storage_initialization(
-    rag: LightRAG, token: LightRagTokenCredential
-):
-    if rag.initialize_status == InitializeStatus.INITIALIZED.value:
-        return
-    if rag.initialize_status == InitializeStatus.INITIALIZING.value:
-        await asyncio.sleep(3)
-    raise HTTPException(status_code=500, detail="Storage initialization failed...")
-
-
-async def initialize_rag_with_header(
-    rag_instance_manager,
-    storage_account_url,
-    storage_container_name,
-    x_affinity_token,
-    storage_access_token,
-    storage_token_expiry,
-):
-    try:
-        if x_affinity_token:
-            rag = await rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
-        else:
-            rag = await rag_instance_manager.get_lightrag(
-                storage_account_url=storage_account_url,
-                storage_container_name=storage_container_name,
-                access_token=get_lightrag_token_credential(
-                    storage_access_token, storage_token_expiry
-                ),
-            )
-        return rag
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-def get_lightrag_token_credential(storage_access_token, storage_token_expiry):
-    return LightRagTokenCredential(storage_access_token, storage_token_expiry)
-
-
-async def try_get_container_lease(
-    client: ContainerClient | BlobClient,
-) -> BlobLeaseClient:
-    retry_count = 0
-    lease = None
-    while lease is None and retry_count < 50:
-        try:
-            lease = client.acquire_lease()
-        except Exception as e:
-            retry_count += 1
-            lease = None
-            logging.warning(
-                f"Failed to acquire lease, error detail: {str(e)}, retrying in 3 seconds..."
-            )
-            await asyncio.sleep(3)
-    if lease is None:
-        logging.error(f"Failed to acquire lease after 50 retries, error....")
-        raise HTTPException(
-            status_code=500, detail="Failed to acquire lease after 50 retries"
-        )
-    return lease
 
 
 def extract_token_value(authorization: str, header_name: str) -> str:

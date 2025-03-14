@@ -20,9 +20,6 @@ from dotenv import load_dotenv
 from .utils_api import (
     get_api_key_dependency,
     parse_args,
-    initialize_rag_with_header,
-    wait_for_storage_initialization,
-    get_lightrag_token_credential,
     extract_token_value,
 )
 from . import __api_version__
@@ -30,21 +27,6 @@ import logging
 from .routers.document_routes import create_document_routes
 from .routers.query_routes import create_query_routes
 from .routers.graph_routes import create_graph_routes
-
-# TODO: following imports are a temporary workaround for long load time
-# TODO: on graph db related module especially networkx and graspologic.
-# TODO: This expected to be fix after migrate to Azure Database server for PostgreSQL.
-# TODO: the workaround is to import the module here so LightRAG server will
-# TODO: take longer to start up but the initialization of the storage will be faster.
-import lightrag.kg.json_doc_status_impl
-import lightrag.kg.json_kv_impl
-import lightrag.kg.nano_vector_db_impl
-import lightrag.kg.networkx_impl
-import lightrag.llm.azure_openai
-import lightrag.lightrag
-import lightrag.az_token_credential
-import lightrag.base
-
 
 # Load environment variables
 try:
@@ -171,14 +153,11 @@ def create_app(args, rag_instance_manager):
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
-        storage_account_url: str = Header(alias="Storage_Account_Url"),
-        storage_container_name: str = Header(alias="Storage_Container_Name"),
-        storage_token_expiry: str = Header(
-            default=None, alias="Storage_Access_Token_Expiry"
-        ),
+        db_url: str = Header(alias="DB_Url"),
+        db_name: str = Header(alias="DB_Name"),
+        db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
-        storage_access_token: str = Header(alias="Storage_Access_Token"),
-        X_Affinity_Token: str = Header(None, alias="X-Affinity-Token"),
+        db_access_token: str = Header(alias="DB_Access_Token"),
     ):
         """Get current system status"""
         result = {}
@@ -193,26 +172,17 @@ def create_app(args, rag_instance_manager):
         # initialize rag instance
         # send an example prompt to the model to check if it is working
         try:
-            storage_access_token = extract_token_value(
-                storage_access_token, "Storage_Access_Token"
-            )
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
             )
-            rag = await initialize_rag_with_header(
-                rag_instance_manager,
-                storage_account_url,
-                storage_container_name,
-                X_Affinity_Token,
-                storage_access_token,
-                storage_token_expiry,
+            storage_access_token = extract_token_value(
+                db_access_token, "DB_Access_Token"
             )
-            lightrag_token = get_lightrag_token_credential(
-                storage_access_token, storage_token_expiry
-            )
-            await wait_for_storage_initialization(
-                rag,
-                lightrag_token,
+            rag = await rag_instance_manager.get_rag_instance(
+                db_url=db_url,
+                db_name=db_name,
+                db_user_name=db_user_name,
+                db_access_token=storage_access_token,
             )
             result["LLM Test Prompt"] = (
                 "Please tell me a trivial fact about the universe."

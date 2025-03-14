@@ -1,12 +1,11 @@
 import asyncio
 import json
 import logging
-import os
 import time
+from abc import ABC
 from dataclasses import dataclass, field
 from typing import Any, Union, final
 import numpy as np
-import configparser
 from lightrag.types import KnowledgeGraph
 import sys
 from tenacity import (
@@ -39,7 +38,7 @@ class PostgreSQLDB:
         self.user = config.get("user", "postgres")
         self.password = config.get("password", None)
         self.database = config.get("database", "postgres")
-        self.workspace = config.get("workspace", "default")
+        self.workspace = "default"
         self.max = 12
         self.increment = 1
         self.pool: Pool | None = None
@@ -178,83 +177,77 @@ class PostgreSQLDB:
 
 
 class ClientManager:
-    _instances: dict[str, Any] = {"db": None, "ref_count": 0}
-    _lock = asyncio.Lock()
 
-    @staticmethod
-    def get_config() -> dict[str, Any]:
-        config = configparser.ConfigParser()
-        config.read("config.ini", "utf-8")
+    def __init__(self):
+        self._instances: dict[str, Any] = {"db": None, "ref_count": 0}
+        self._lock = asyncio.Lock()
 
-        return {
-            "host": os.environ.get(
-                "POSTGRES_HOST",
-                config.get("postgres", "host", fallback="localhost"),
-            ),
-            "port": os.environ.get(
-                "POSTGRES_PORT", config.get("postgres", "port", fallback=5432)
-            ),
-            "user": os.environ.get(
-                "POSTGRES_USER", config.get("postgres", "user", fallback=None)
-            ),
-            "password": os.environ.get(
-                "POSTGRES_PASSWORD",
-                config.get("postgres", "password", fallback=None),
-            ),
-            "database": os.environ.get(
-                "POSTGRES_DATABASE",
-                config.get("postgres", "database", fallback=None),
-            ),
-            "workspace": os.environ.get(
-                "POSTGRES_WORKSPACE",
-                config.get("postgres", "workspace", fallback="default"),
-            ),
-        }
-
-    @classmethod
-    async def get_client(cls) -> PostgreSQLDB:
-        async with cls._lock:
-            if cls._instances["db"] is None:
-                config = ClientManager.get_config()
+    async def get_client(
+            self,
+            db_server_url: str,
+            db_name: str,
+            db_user: str,
+            access_token: str,
+    ) -> PostgreSQLDB:
+        async with self._lock:
+            if self._instances["db"] is None:
+                config = {
+                    "host": db_server_url,
+                    "port": 6432, # always use 6432 to connect to PGBouncer for connection pooling
+                    "user": db_user,
+                    "password": access_token,
+                    "database": db_name,
+                }
                 db = PostgreSQLDB(config)
                 await db.initdb()
                 await db.check_tables()
-                cls._instances["db"] = db
-                cls._instances["ref_count"] = 0
-            cls._instances["ref_count"] += 1
-            return cls._instances["db"]
+                self._instances["db"] = db
+                self._instances["ref_count"] = 0
+            self._instances["ref_count"] += 1
+            return self._instances["db"]
 
-    @classmethod
-    async def release_client(cls, db: PostgreSQLDB):
-        async with cls._lock:
+    async def release_client(self, db: PostgreSQLDB):
+        async with self._lock:
             if db is not None:
-                if db is cls._instances["db"]:
-                    cls._instances["ref_count"] -= 1
-                    if cls._instances["ref_count"] == 0:
+                if db is self._instances["db"]:
+                    self._instances["ref_count"] -= 1
+                    if self._instances["ref_count"] == 0:
                         await db.pool.close()
                         logging.info("Closed PostgreSQL database connection pool")
-                        cls._instances["db"] = None
+                        self._instances["db"] = None
                 else:
                     await db.pool.close()
 
 
 @final
 @dataclass
-class PGKVStorage(BaseKVStorage):
-    db: PostgreSQLDB = field(default=None)
+class PGKVStorage(BaseKVStorage, ABC):
+    db: PostgreSQLDB|None = field(default=None)
 
     def __post_init__(self):
         namespace_prefix = self.global_config.get("namespace_prefix")
         self.base_namespace = self.namespace.replace(namespace_prefix, "")
         self._max_batch_size = self.global_config["embedding_batch_num"]
 
-    async def initialize(self):
+    async def initialize(
+            self,
+            client_manager: ClientManager,
+            db_server_url: str,
+            db_name: str,
+            db_user: str,
+            access_token: str,
+    ):
         if self.db is None:
-            self.db = await ClientManager.get_client()
+            self.db = await client_manager.get_client(
+                db_server_url,
+                db_name,
+                db_user,
+                access_token
+            )
 
-    async def finalize(self):
+    async def finalize(self, client_manager: ClientManager):
         if self.db is not None:
-            await ClientManager.release_client(self.db)
+            await client_manager.release_client(self.db)
             self.db = None
 
     ################ QUERY METHODS ################
@@ -370,6 +363,10 @@ class PGKVStorage(BaseKVStorage):
         # PG handles persistence automatically
         pass
 
+    async def clear(self) -> None:
+        drop_sql = f"DROP TABLE IF EXISTS LIGHTRAG_LLM_CACHE CASCADE;"
+        await self.db.execute(drop_sql)
+
     async def drop(self) -> None:
         """Drop the storage"""
         drop_sql = SQL_TEMPLATES["drop_all"]
@@ -378,7 +375,7 @@ class PGKVStorage(BaseKVStorage):
 
 @final
 @dataclass
-class PGVectorStorage(BaseVectorStorage):
+class PGVectorStorage(BaseVectorStorage, ABC):
     db: PostgreSQLDB | None = field(default=None)
 
     def __post_init__(self):
@@ -393,13 +390,25 @@ class PGVectorStorage(BaseVectorStorage):
             )
         self.cosine_better_than_threshold = cosine_threshold
 
-    async def initialize(self):
+    async def initialize(
+            self,
+            client_manager: ClientManager,
+            db_server_url: str,
+            db_name: str,
+            db_user: str,
+            access_token: str,
+    ):
         if self.db is None:
-            self.db = await ClientManager.get_client()
+            self.db = await client_manager.get_client(
+                db_server_url,
+                db_name,
+                db_user,
+                access_token
+            )
 
-    async def finalize(self):
+    async def finalize(self, client_manager: ClientManager):
         if self.db is not None:
-            await ClientManager.release_client(self.db)
+            await client_manager.release_client(self.db)
             self.db = None
 
     def _upsert_chunks(self, item: dict[str, Any]) -> tuple[str, dict[str, Any]]:
@@ -443,7 +452,7 @@ class PGVectorStorage(BaseVectorStorage):
         }
         return upsert_sql, data
 
-    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
+    async def upsert(self, data: dict[str, dict[str, Any]], ai_access_token:str) -> None:
         logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
@@ -482,7 +491,7 @@ class PGVectorStorage(BaseVectorStorage):
             await self.db.execute(upsert_sql, data)
 
     #################### query method ###############
-    async def query(self, query: str, top_k: int) -> list[dict[str, Any]]:
+    async def query(self, ai_access_token: str, query: str, top_k: int) -> list[dict[str, Any]]:
         embeddings = await self.embedding_func([query])
         embedding = embeddings[0]
         embedding_string = ",".join(map(str, embedding))
@@ -508,19 +517,36 @@ class PGVectorStorage(BaseVectorStorage):
     async def delete_entity_relation(self, entity_name: str) -> None:
         raise NotImplementedError
 
+    async def drop(self) -> None:
+        """Drop the storage"""
+        drop_sql = SQL_TEMPLATES["drop_all"]
+        await self.db.execute(drop_sql)
+
 
 @final
 @dataclass
 class PGDocStatusStorage(DocStatusStorage):
-    db: PostgreSQLDB = field(default=None)
+    db: PostgreSQLDB|None = field(default=None)
 
-    async def initialize(self):
+    async def initialize(
+            self,
+            client_manager: ClientManager,
+            db_server_url: str,
+            db_name: str,
+            db_user: str,
+            access_token: str,
+    ):
         if self.db is None:
-            self.db = await ClientManager.get_client()
+            self.db = await client_manager.get_client(
+                db_server_url,
+                db_name,
+                db_user,
+                access_token
+            )
 
-    async def finalize(self):
+    async def finalize(self, client_manager: ClientManager):
         if self.db is not None:
-            await ClientManager.release_client(self.db)
+            await client_manager.release_client(self.db)
             self.db = None
 
     async def filter_keys(self, keys: set[str]) -> set[str]:
@@ -666,19 +692,31 @@ class PGGraphQueryException(Exception):
 @dataclass
 class PGGraphStorage(BaseGraphStorage):
     def __post_init__(self):
-        self.graph_name = self.namespace or os.environ.get("AGE_GRAPH_NAME", "lightrag")
+        self.graph_name = "lightrag"
         self._node_embed_algorithms = {
             "node2vec": self._node2vec_embed,
         }
         self.db: PostgreSQLDB | None = None
 
-    async def initialize(self):
+    async def initialize(
+            self,
+            client_manager: ClientManager,
+            db_server_url: str,
+            db_name: str,
+            db_user: str,
+            access_token: str,
+    ):
         if self.db is None:
-            self.db = await ClientManager.get_client()
+            self.db = await client_manager.get_client(
+                db_server_url,
+                db_name,
+                db_user,
+                access_token
+            )
 
-    async def finalize(self):
+    async def finalize(self, client_manager: ClientManager):
         if self.db is not None:
-            await ClientManager.release_client(self.db)
+            await client_manager.release_client(self.db)
             self.db = None
 
     async def index_done_callback(self) -> None:
@@ -1106,6 +1144,8 @@ class PGGraphStorage(BaseGraphStorage):
         await self.db.execute(drop_sql)
         drop_sql = SQL_TEMPLATES["drop_vdb_relation"]
         await self.db.execute(drop_sql)
+        drop_sql = f"SELECT * FROM ag_catalog.drop_graph({self.graph_name}, cascade := true);"
+        await self.db.execute(drop_sql)
 
 
 NAMESPACE_TABLE_MAP = {
@@ -1293,7 +1333,7 @@ SQL_TEMPLATES = {
     "drop_all": """
 	    DROP TABLE IF EXISTS LIGHTRAG_DOC_FULL CASCADE;
 	    DROP TABLE IF EXISTS LIGHTRAG_DOC_CHUNKS CASCADE;
-	    DROP TABLE IF EXISTS LIGHTRAG_LLM_CACHE CASCADE;
+	    
 	    DROP TABLE IF EXISTS LIGHTRAG_VDB_ENTITY CASCADE;
 	    DROP TABLE IF EXISTS LIGHTRAG_VDB_RELATION CASCADE;
        """,

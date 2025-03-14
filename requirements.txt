@@ -7,14 +7,11 @@ numpy
 openai
 pydantic
 python-dotenv
-azure-storage-blob
 httpx
 azure-core
-networkx
 setuptools
 tenacity
 tiktoken
 fastapi
-graspologic
 python-multipart
 uvicorn
