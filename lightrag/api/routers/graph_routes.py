@@ -27,7 +27,7 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """Get all graph labels"""
         rag: LightRAG | None = None
         try:
@@ -59,7 +59,7 @@ def create_graph_routes(rag_instance_manager, api_key: Optional[str] = None):
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
         max_depth: int = 3,
-    ):
+    )->JSONResponse|None:
         """Get knowledge graph for a specific label"""
         rag: LightRAG | None = None
         try:

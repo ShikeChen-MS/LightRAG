@@ -2,7 +2,8 @@
 # build python and install dependencies
 FROM mcr.microsoft.com/azurelinux/base/core:3.0 AS builder
 
-ARG PYTHON_VERSION=3.12.9
+ARG PYTHON_VERSION=3.13.2
+ARG PYTHON_CMD=python3.13
 
 RUN tdnf check-update && \
     tdnf update -y && \
@@ -28,13 +29,18 @@ RUN tdnf install -y \
 RUN cd / && \
     wget https://www.python.org/ftp/python/$PYTHON_VERSION/Python-$PYTHON_VERSION.tgz
 
-RUN tar xzf Python-$PYTHON_VERSION.tgz && \
-    cd Python-$PYTHON_VERSION && \
-    ./configure --enable-optimizations && \
-    make altinstall && \
-    cd / && \
-    python3.12 -m pip install -U pip && \
-    rm -f Python-$PYTHON_VERSION.tgz
+RUN tar xzf Python-$PYTHON_VERSION.tgz
+
+RUN cd Python-$PYTHON_VERSION && \
+    ./configure --enable-optimizations
+
+RUN cd Python-$PYTHON_VERSION && \
+    make altinstall
+
+RUN cd / && \
+    $PYTHON_CMD -m pip install -U pip
+
+RUN rm -f Python-$PYTHON_VERSION.tgz
 
 COPY requirements.txt .
 

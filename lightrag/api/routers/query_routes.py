@@ -160,7 +160,7 @@ def create_query_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         rag: LightRAG | None = None
         try:
             storage_access_token = extract_token_value(
@@ -198,7 +198,7 @@ def create_query_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
         """
@@ -246,7 +246,7 @@ def create_query_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->StreamingResponse|None:
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
         """

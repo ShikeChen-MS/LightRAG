@@ -178,7 +178,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """
         Insert text into the RAG system.
 
@@ -233,7 +233,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """
         Insert multiple texts into the RAG system.
 
@@ -285,7 +285,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """
         Insert a file directly into the RAG system.
 
@@ -347,7 +347,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """
         Clear all documents from the RAG system.
 
@@ -394,7 +394,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ):
+    )->JSONResponse|None:
         """
         Get the status of all documents in the system.
 
