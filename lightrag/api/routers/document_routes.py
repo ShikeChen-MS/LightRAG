@@ -108,21 +108,19 @@ class DocStatusResponse(BaseModel):
 class DocsStatusesResponse(BaseModel):
     statuses: Dict[DocStatus, List[DocStatusResponse]] = {}
 
+
 async def pipeline_enqueue_file(
     rag: LightRAG,
     file_name: str,
     content: str,
 ) -> bool:
-    """Add a file to the queue for processing
-    """
+    """Add a file to the queue for processing"""
     lease = None
     blob_lease = None
     try:
         # Insert into the RAG queue
         if content:
-            await rag.apipeline_enqueue_documents(
-                 [file_name], content
-            )
+            await rag.apipeline_enqueue_documents([file_name], content)
             logging.info(f"Successfully fetched and enqueued file: {file_name}")
             return True
         else:
@@ -136,10 +134,7 @@ async def pipeline_enqueue_file(
 
 
 async def pipeline_index_file(
-    rag: LightRAG,
-    file_name: str,
-    content: str,
-    ai_access_token: str
+    rag: LightRAG, file_name: str, content: str, ai_access_token: str
 ):
     """Index a file"""
     try:
@@ -163,6 +158,7 @@ async def pipeline_index_texts(
     await rag.apipeline_enqueue_documents(source_ids, texts)
     await rag.apipeline_process_enqueue_documents(ai_access_token)
 
+
 def create_document_routes(
     rag_instance_manager: RAGInstanceManager, api_key: Optional[str] = None
 ):
@@ -178,7 +174,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    )->JSONResponse|None:
+    ) -> JSONResponse | None:
         """
         Insert text into the RAG system.
 
@@ -201,10 +197,7 @@ def create_document_routes(
             )
 
             await pipeline_index_texts(
-                rag,
-                [request.text],
-                [request.source_id],
-                ai_access_token
+                rag, [request.text], [request.source_id], ai_access_token
             )
             response = JSONResponse(
                 content={
@@ -233,7 +226,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    )->JSONResponse|None:
+    ) -> JSONResponse | None:
         """
         Insert multiple texts into the RAG system.
 
@@ -255,10 +248,7 @@ def create_document_routes(
                 db_access_token=storage_access_token,
             )
             await pipeline_index_texts(
-                rag,
-                request.texts,
-                request.source_ids,
-                ai_access_token
+                rag, request.texts, request.source_ids, ai_access_token
             )
             response = JSONResponse(
                 content={
@@ -285,7 +275,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    )->JSONResponse|None:
+    ) -> JSONResponse | None:
         """
         Insert a file directly into the RAG system.
 
@@ -312,9 +302,11 @@ def create_document_routes(
                     detail=f"Unsupported file type. Only .txt files are supported.",
                 )
             filename = file.filename
-            if ' ' in file.filename:
-                filename = filename.replace(' ', '_')
-                logging.info(f"Renamed file {file.filename} to {filename} to remove spaces.")
+            if " " in file.filename:
+                filename = filename.replace(" ", "_")
+                logging.info(
+                    f"Renamed file {file.filename} to {filename} to remove spaces."
+                )
             content = await file.read()
             utf8_content = content.decode("utf-8")
             await pipeline_index_file(
@@ -347,7 +339,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    )->JSONResponse|None:
+    ) -> JSONResponse | None:
         """
         Clear all documents from the RAG system.
 
@@ -394,7 +386,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    )->JSONResponse|None:
+    ) -> JSONResponse | None:
         """
         Get the status of all documents in the system.
 
@@ -447,9 +439,7 @@ def create_document_routes(
                             metadata=doc_status.metadata,
                         )
                     )
-            return JSONResponse(
-                content=response.model_dump()
-            )
+            return JSONResponse(content=response.model_dump())
         except Exception as e:
             logging.error(f"Error GET /documents: {str(e)}")
             logging.error(traceback.format_exc())

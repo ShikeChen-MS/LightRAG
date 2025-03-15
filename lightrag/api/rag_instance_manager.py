@@ -34,11 +34,7 @@ class RAGInstanceManager:
             self.args = kwargs["args"]
 
     async def get_rag_instance(
-        self,
-        db_url: str,
-        db_name: str,
-        db_user_name: str,
-        db_access_token: str
+        self, db_url: str, db_name: str, db_user_name: str, db_access_token: str
     ) -> Any:
         # This function and following embedding_func will
         # be passed to LightRAG instance to be used for completion and embedding
@@ -65,8 +61,8 @@ class RAGInstanceManager:
                 system_prompt=system_prompt,
                 history_messages=history_messages,
                 base_url=self.args.llm_binding_host,
-                    api_version=self.args.llm_api_version,
-                    **kwargs,
+                api_version=self.args.llm_api_version,
+                **kwargs,
             )
 
         embedding_func = EmbeddingFunc(

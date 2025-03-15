@@ -117,12 +117,12 @@ def create_app(args, rag_instance_manager):
 
     @app.get("/logs", dependencies=[Depends(optional_api_key)])
     async def get_logs(
-            storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_account_url: str = Header(alias="Storage_Account_Url"),
         storage_container_name: str = Header(alias="Storage_Container_Name"),
         storage_token_expiry: str = Header(
             default=None, alias="Storage_Access_Token_Expiry"
         ),
-        storage_access_token: str = Header(alias="Storage_Access_Token")
+        storage_access_token: str = Header(alias="Storage_Access_Token"),
     ):
         current_dir = os.path.dirname(__file__)
         logging_config_path = os.path.join(current_dir, "logging_config.json")
@@ -131,16 +131,16 @@ def create_app(args, rag_instance_manager):
             logfile_name = logging_configs["handlers"]["file"]["filename"]
         if os.path.isfile(logfile_name):
             return FileResponse(logfile_name)
-        return JSONResponse( status_code=404, content="Log file not found.")
+        return JSONResponse(status_code=404, content="Log file not found.")
 
     @app.delete("/logs", dependencies=[Depends(optional_api_key)])
     async def delete_logs(
-            storage_account_url: str = Header(alias="Storage_Account_Url"),
+        storage_account_url: str = Header(alias="Storage_Account_Url"),
         storage_container_name: str = Header(alias="Storage_Container_Name"),
         storage_token_expiry: str = Header(
             default=None, alias="Storage_Access_Token_Expiry"
         ),
-        storage_access_token: str = Header(alias="Storage_Access_Token")
+        storage_access_token: str = Header(alias="Storage_Access_Token"),
     ):
         current_dir = os.path.dirname(__file__)
         logging_config_path = os.path.join(current_dir, "logging_config.json")
@@ -151,7 +151,6 @@ def create_app(args, rag_instance_manager):
             os.remove(logfile_name)
             return JSONResponse(status_code=200, content="Log file deleted.")
         return JSONResponse(status_code=404, content="Log file not found.")
-
 
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
@@ -238,6 +237,7 @@ def main():
             }
         )
     uvicorn.run(**uvicorn_config)
+
 
 if __name__ == "__main__":
     main()

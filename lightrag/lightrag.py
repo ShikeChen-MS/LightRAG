@@ -239,7 +239,7 @@ class LightRAG:
                 self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
             ),
             embedding_func=self.embedding_func,
-            db = self.db
+            db=self.db,
         )
 
         self.full_docs: BaseKVStorage = self.key_string_value_json_storage_cls(  # type: ignore
@@ -247,21 +247,21 @@ class LightRAG:
                 self.namespace_prefix, NameSpace.KV_STORE_FULL_DOCS
             ),
             embedding_func=self.embedding_func,
-            db = self.db
+            db=self.db,
         )
         self.text_chunks: BaseKVStorage = self.key_string_value_json_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.KV_STORE_TEXT_CHUNKS
             ),
             embedding_func=self.embedding_func,
-            db = self.db
+            db=self.db,
         )
         self.chunk_entity_relation_graph: BaseGraphStorage = self.graph_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.GRAPH_STORE_CHUNK_ENTITY_RELATION
             ),
             embedding_func=self.embedding_func,
-            db = self.db
+            db=self.db,
         )
 
         self.entities_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
@@ -270,7 +270,7 @@ class LightRAG:
             ),
             embedding_func=self.embedding_func,
             meta_fields={"entity_name", "input_source_id"},
-            db = self.db
+            db=self.db,
         )
         self.relationships_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=make_namespace(
@@ -278,14 +278,14 @@ class LightRAG:
             ),
             embedding_func=self.embedding_func,
             meta_fields={"src_id", "tgt_id", "input_source_id"},
-            db = self.db
+            db=self.db,
         )
         self.chunks_vdb: BaseVectorStorage = self.vector_db_storage_cls(  # type: ignore
             namespace=make_namespace(
                 self.namespace_prefix, NameSpace.VECTOR_STORE_CHUNKS
             ),
             embedding_func=self.embedding_func,
-            db = self.db
+            db=self.db,
         )
 
         # Initialize document status storage
@@ -293,7 +293,7 @@ class LightRAG:
             namespace=make_namespace(self.namespace_prefix, NameSpace.DOC_STATUS),
             global_config=global_config,
             embedding_func=None,
-            db = self.db
+            db=self.db,
         )
         if self.llm_response_cache and hasattr(
             self.llm_response_cache, "global_config"
@@ -305,7 +305,7 @@ class LightRAG:
                     self.namespace_prefix, NameSpace.KV_STORE_LLM_RESPONSE_CACHE
                 ),
                 embedding_func=self.embedding_func,
-                db = self.db
+                db=self.db,
             )
 
         self.llm_model_func = limit_async_func_call(self.llm_model_max_async)(
@@ -373,8 +373,7 @@ class LightRAG:
         split_by_character_only: bool = False,
         ids: str | list[str] | None = None,
     ) -> None:
-        """Sync Insert documents with checkpoint support
-        """
+        """Sync Insert documents with checkpoint support"""
         loop = always_get_an_event_loop()
         loop.run_until_complete(
             self.ainsert(
@@ -388,16 +387,14 @@ class LightRAG:
 
     async def ainsert(
         self,
-        ai_access_token:str,
+        ai_access_token: str,
         input: str | list[str],
         split_by_character: str | None = None,
         split_by_character_only: bool = False,
         ids: str | list[str] | None = None,
     ) -> None:
         """Async Insert documents with checkpoint support"""
-        await self.apipeline_enqueue_documents(
-            ids, input
-        )
+        await self.apipeline_enqueue_documents(ids, input)
         await self.apipeline_process_enqueue_documents(
             ai_access_token,
             split_by_character,
@@ -481,9 +478,7 @@ class LightRAG:
                 await self._insert_done()
 
     async def apipeline_enqueue_documents(
-        self,
-        source_ids: str | list[str],
-        input: str | list[str]
+        self, source_ids: str | list[str], input: str | list[str]
     ) -> None:
         """
         Pipeline for Processing Documents
@@ -502,7 +497,6 @@ class LightRAG:
 
         if len(source_ids) != len(set(source_ids)):
             raise ValueError("source_ids must be unique")
-
 
         # Generate contents dict of IDs provided by user and documents
         contents = {id_: doc for id_, doc in zip(source_ids, input)}
@@ -545,9 +539,7 @@ class LightRAG:
             return
 
         # 5. Store status document
-        await self.doc_status.upsert(
-            new_docs
-        )
+        await self.doc_status.upsert(new_docs)
         logging.info(f"Stored {len(new_docs)} new unique documents")
 
     async def apipeline_process_enqueue_documents(

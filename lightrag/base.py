@@ -94,7 +94,7 @@ class StorageNameSpace(ABC):
         """Commit the storage operations after indexing"""
 
     @abstractmethod
-    async def drop(self)-> None:
+    async def drop(self) -> None:
         """Clear the storage"""
 
 
@@ -287,10 +287,7 @@ class DocStatusStorage(StorageNameSpace, ABC):
         """Get all documents with a specific status"""
 
     @abstractmethod
-    async def upsert(
-        self,
-        data: dict[str, dict[str, Any]]
-    ) -> None:
+    async def upsert(self, data: dict[str, dict[str, Any]]) -> None:
         """Upsert data"""
 
 

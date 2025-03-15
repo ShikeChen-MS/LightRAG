@@ -28,13 +28,14 @@ from ..postgresql import PostgreSQLDB
 
 if sys.platform.startswith("win"):
     import asyncio.windows_events
+
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 @final
 @dataclass
 class PGKVStorage(BaseKVStorage, ABC):
-    db: PostgreSQLDB|None = field(default=None)
+    db: PostgreSQLDB | None = field(default=None)
 
     def __post_init__(self):
         namespace_prefix = self.global_config.get("namespace_prefix")
@@ -222,7 +223,9 @@ class PGVectorStorage(BaseVectorStorage, ABC):
         }
         return upsert_sql, data
 
-    async def upsert(self, data: dict[str, dict[str, Any]], ai_access_token:str) -> None:
+    async def upsert(
+        self, data: dict[str, dict[str, Any]], ai_access_token: str
+    ) -> None:
         logging.info(f"Inserting {len(data)} to {self.namespace}")
         if not data:
             return
@@ -261,7 +264,9 @@ class PGVectorStorage(BaseVectorStorage, ABC):
             await self.db.execute(upsert_sql, data)
 
     #################### query method ###############
-    async def query(self, ai_access_token: str, query: str, top_k: int) -> list[dict[str, Any]]:
+    async def query(
+        self, ai_access_token: str, query: str, top_k: int
+    ) -> list[dict[str, Any]]:
         embeddings = await self.embedding_func([query])
         embedding = embeddings[0]
         embedding_string = ",".join(map(str, embedding))
@@ -296,7 +301,7 @@ class PGVectorStorage(BaseVectorStorage, ABC):
 @final
 @dataclass
 class PGDocStatusStorage(DocStatusStorage):
-    db: PostgreSQLDB|None = field(default=None)
+    db: PostgreSQLDB | None = field(default=None)
 
     async def filter_keys(self, keys: set[str]) -> set[str]:
         """Filter out duplicated content"""
@@ -872,7 +877,9 @@ class PGGraphStorage(BaseGraphStorage):
         await self.db.execute(drop_sql)
         drop_sql = SQL_TEMPLATES["drop_vdb_relation"]
         await self.db.execute(drop_sql)
-        drop_sql = f"SELECT * FROM ag_catalog.drop_graph({self.graph_name}, cascade := true);"
+        drop_sql = (
+            f"SELECT * FROM ag_catalog.drop_graph({self.graph_name}, cascade := true);"
+        )
         await self.db.execute(drop_sql)
 
 

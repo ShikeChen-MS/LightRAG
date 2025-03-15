@@ -6,6 +6,7 @@ import sys
 
 if sys.platform.startswith("win"):
     import asyncio.windows_events
+
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
@@ -152,6 +153,7 @@ class PostgreSQLDB:
         except Exception as e:
             logging.error(f"PostgreSQL database,\nsql:{sql},\ndata:{data},\nerror:{e}")
             raise
+
 
 TABLES = {
     "LIGHTRAG_DOC_FULL": {
