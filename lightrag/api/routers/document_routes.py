@@ -185,7 +185,7 @@ def create_document_routes(
         This endpoint allows you to insert text data into the RAG system for later retrieval
         and use in generating responses.
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -240,7 +240,7 @@ def create_document_routes(
         This endpoint allows you to insert multiple text entries into the RAG system
         in a single request.
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -292,7 +292,7 @@ def create_document_routes(
         This endpoint accepts a file upload and processes it for inclusion in the RAG system.
         The file is saved temporarily and processed in the background.
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -354,7 +354,7 @@ def create_document_routes(
         This endpoint deletes all text chunks, entities vector database, and relationships
         vector database, effectively clearing all documents from the RAG system.
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -401,7 +401,7 @@ def create_document_routes(
         This endpoint retrieves the current status of all documents, grouped by their
         processing status (PENDING, PROCESSING, PROCESSED, FAILED).
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"

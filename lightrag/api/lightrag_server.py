@@ -3,12 +3,16 @@ LightRAG FastAPI Server
 """
 
 import json
+import traceback
+
 from fastapi import (
     FastAPI,
     Depends,
     Header,
 )
 import uvicorn
+
+from lightrag import LightRAG
 from .rag_instance_manager import RAGInstanceManager
 import os
 import logging.config
@@ -149,8 +153,6 @@ def create_app(args, rag_instance_manager):
         return JSONResponse(status_code=404, content="Log file not found.")
 
 
-
-
     @app.post("/health", dependencies=[Depends(optional_api_key)])
     async def get_status(
         db_url: str = Header(alias="DB_Url"),
@@ -171,6 +173,7 @@ def create_app(args, rag_instance_manager):
         affinity_token = ""
         # initialize rag instance
         # send an example prompt to the model to check if it is working
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -196,13 +199,14 @@ def create_app(args, rag_instance_manager):
                 aad_token=ai_access_token, texts=result["Embedding Test Prompt"]
             )
             result["Embedding Response Length"] = len(response[0])
-            affinity_token = rag.affinity_token
         except Exception as e:
             result["Status"] = "Unhealthy"
-            result["Error"] = str(e)
-        return JSONResponse(
-            content=result, headers={"X-Affinity-Token": affinity_token}
-        )
+            error = str(e) + str(traceback.format_exc())
+            result["Error"] = error
+        finally:
+            if rag:
+                await rag.finalize_storages()
+        return JSONResponse(content=result)
 
     return app
 
@@ -234,7 +238,6 @@ def main():
             }
         )
     uvicorn.run(**uvicorn_config)
-
 
 if __name__ == "__main__":
     main()

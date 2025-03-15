@@ -4,6 +4,7 @@ This module contains all query-related routes for the LightRAG API.
 
 import json
 import logging
+import traceback
 from typing import Any, Dict, List, Literal, Optional
 from fastapi.responses import JSONResponse
 from fastapi import (
@@ -13,6 +14,8 @@ from fastapi import (
     Header,
 )
 from fastapi.responses import StreamingResponse
+
+from ... import LightRAG
 from ...base import QueryParam
 from ..utils_api import (
     get_api_key_dependency,
@@ -158,6 +161,7 @@ def create_query_routes(
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
     ):
+        rag: LightRAG | None = None
         try:
             storage_access_token = extract_token_value(
                 db_access_token, "DB_Access_Token"
@@ -177,7 +181,12 @@ def create_query_routes(
             )
             return response
         except Exception as e:
+            logging.error(f"Error /query/cache: {str(e)}")
+            logging.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            if rag:
+                await rag.finalize_storages()
 
     @router.post(
         "/query", response_model=QueryResponse, dependencies=[Depends(optional_api_key)]
@@ -193,7 +202,7 @@ def create_query_routes(
         """
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -222,6 +231,8 @@ def create_query_routes(
             else:
                 return JSONResponse(content=str(response))
         except Exception as e:
+            logging.error(f"Error /query: {str(e)}")
+            logging.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
         finally:
             if rag:
@@ -239,7 +250,7 @@ def create_query_routes(
         """
         This endpoint performs a retrieval-augmented generation (RAG) query and streams the response.
         """
-        rag = None
+        rag: LightRAG | None = None
         try:
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
@@ -284,6 +295,8 @@ def create_query_routes(
                 },
             )
         except Exception as e:
+            logging.error(f"Error /query/stream: {str(e)}")
+            logging.error(traceback.format_exc())
             raise HTTPException(status_code=500, detail=str(e))
         finally:
             if rag:
