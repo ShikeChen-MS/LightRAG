@@ -5,7 +5,7 @@ This module contains all document-related routes for the LightRAG API.
 import asyncio
 import logging
 import traceback
-from ..rag_instance_manager import RAGInstanceManager
+from ...rag_instance_manager import RAGInstanceManager
 from typing import Dict, List, Optional, Any
 from fastapi import (
     APIRouter,

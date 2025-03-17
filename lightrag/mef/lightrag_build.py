@@ -4,10 +4,12 @@ import logging.config
 import os
 import traceback
 from typing import List, Dict, Any
+from dotenv import load_dotenv
 from lightrag import LightRAG
 from lightrag.api.utils_api import extract_token_value
 from lightrag.rag_instance_manager import RAGInstanceManager
 
+load_dotenv()
 
 class LightragBuild:
 
