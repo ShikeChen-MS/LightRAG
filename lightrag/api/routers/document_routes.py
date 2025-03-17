@@ -339,7 +339,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ) -> JSONResponse | None:
+    ) -> JSONResponse:
         """
         Clear all documents from the RAG system.
 
@@ -386,7 +386,7 @@ def create_document_routes(
         db_user_name: str = Header(alias="DB_User_Name"),
         ai_access_token: str = Header(alias="Azure-AI-Access-Token"),
         db_access_token: str = Header(alias="DB_Access_Token"),
-    ) -> JSONResponse | None:
+    ) -> JSONResponse:
         """
         Get the status of all documents in the system.
 

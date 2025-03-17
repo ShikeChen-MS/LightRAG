@@ -282,6 +282,9 @@ class PGVectorStorage(BaseVectorStorage, ABC):
         results = await self.db.query(sql, params=params, multirows=True)
         return results
 
+    async def client(self):
+        pass
+
     async def index_done_callback(self) -> None:
         # PG handles persistence automatically
         pass
@@ -445,12 +448,13 @@ class PGGraphQueryException(Exception):
 @final
 @dataclass
 class PGGraphStorage(BaseGraphStorage):
+    db: PostgreSQLDB | None = field(default=None)
+
     def __post_init__(self):
         self.graph_name = "lightrag"
         self._node_embed_algorithms = {
             "node2vec": self._node2vec_embed,
         }
-        self.db: PostgreSQLDB | None = None
 
     async def index_done_callback(self) -> None:
         # PG handles persistence automatically

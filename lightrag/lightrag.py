@@ -165,7 +165,7 @@ class LightRAG:
             # Verify storage implementation compatibility
             verify_storage_implementation(storage_type, storage_name)
             # Check environment variables
-            self.check_storage_env_vars(storage_name)
+            #self.check_storage_env_vars(storage_name)
 
         # Ensure vector_db_storage_cls_kwargs has required fields
         self.vector_db_storage_cls_kwargs = {
@@ -292,7 +292,7 @@ class LightRAG:
         self.doc_status: DocStatusStorage = self.doc_status_storage_cls(
             namespace=make_namespace(self.namespace_prefix, NameSpace.DOC_STATUS),
             global_config=global_config,
-            embedding_func=None,
+            embedding_func=self.embedding_func,
             db=self.db,
         )
         if self.llm_response_cache and hasattr(

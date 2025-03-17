@@ -93,6 +93,7 @@ class RAGInstanceManager:
         await db.initdb()
         await db.check_tables()
         rag = LightRAG(
+            db=db,
             scan_progress={
                 "is_scanning": False,
                 "current_file": "",

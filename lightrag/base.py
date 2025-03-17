@@ -263,6 +263,7 @@ class DocProcessingStatus:
 @dataclass
 class DocStatusStorage(StorageNameSpace, ABC):
     """Base class for document status storage"""
+    embedding_func: EmbeddingFunc
 
     @abstractmethod
     async def get_by_id(self, id: str) -> dict[str, Any] | None:

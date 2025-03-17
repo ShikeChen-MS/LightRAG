@@ -60,6 +60,19 @@ class PostgreSQLDB:
             await connection.execute(  # type: ignore
                 'SET search_path = ag_catalog, "$user", public'
             )
+            await connection.execute(
+                """DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'age'
+                    ) THEN
+                      CREATE EXTENSION age;
+                    END IF;
+                  END $$;
+                """
+            )
             await connection.execute(  # type: ignore
                 f"select create_graph('{graph_name}')"
             )
@@ -157,7 +170,18 @@ class PostgreSQLDB:
 
 TABLES = {
     "LIGHTRAG_DOC_FULL": {
-        "ddl": """CREATE TABLE LIGHTRAG_DOC_FULL (
+        "ddl": """SET search_path = "$user", public;
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'vector'
+                    ) THEN
+                      CREATE EXTENSION vector;
+                    END IF;
+                  END $$;
+                  CREATE TABLE LIGHTRAG_DOC_FULL (
                     id VARCHAR(255),
                     workspace VARCHAR(255),
                     doc_name VARCHAR(1024),
@@ -169,7 +193,18 @@ TABLES = {
                     )"""
     },
     "LIGHTRAG_DOC_CHUNKS": {
-        "ddl": """CREATE TABLE LIGHTRAG_DOC_CHUNKS (
+        "ddl": """SET search_path = "$user", public;
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'vector'
+                    ) THEN
+                      CREATE EXTENSION vector;
+                    END IF;
+                  END $$;
+                  CREATE TABLE LIGHTRAG_DOC_CHUNKS (
                     id VARCHAR(255),
                     workspace VARCHAR(255),
                     full_doc_id VARCHAR(256),
@@ -183,7 +218,18 @@ TABLES = {
                     )"""
     },
     "LIGHTRAG_VDB_ENTITY": {
-        "ddl": """CREATE TABLE LIGHTRAG_VDB_ENTITY (
+        "ddl": """SET search_path = "$user", public;
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'vector'
+                    ) THEN
+                      CREATE EXTENSION vector;
+                    END IF;
+                  END $$;
+                  CREATE TABLE LIGHTRAG_VDB_ENTITY (
                     id VARCHAR(255),
                     workspace VARCHAR(255),
                     entity_name VARCHAR(255),
@@ -195,7 +241,18 @@ TABLES = {
                     )"""
     },
     "LIGHTRAG_VDB_RELATION": {
-        "ddl": """CREATE TABLE LIGHTRAG_VDB_RELATION (
+        "ddl": """SET search_path = "$user", public;
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'vector'
+                    ) THEN
+                      CREATE EXTENSION vector;
+                    END IF;
+                  END $$;
+                  CREATE TABLE LIGHTRAG_VDB_RELATION (
                     id VARCHAR(255),
                     workspace VARCHAR(255),
                     source_id VARCHAR(256),
@@ -208,7 +265,18 @@ TABLES = {
                     )"""
     },
     "LIGHTRAG_LLM_CACHE": {
-        "ddl": """CREATE TABLE LIGHTRAG_LLM_CACHE (
+        "ddl": """SET search_path = "$user", public;
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'vector'
+                    ) THEN
+                      CREATE EXTENSION vector;
+                    END IF;
+                  END $$;
+                  CREATE TABLE LIGHTRAG_LLM_CACHE (
 	                workspace varchar(255) NOT NULL,
 	                id varchar(255) NOT NULL,
 	                mode varchar(32) NOT NULL,
@@ -220,7 +288,18 @@ TABLES = {
                     )"""
     },
     "LIGHTRAG_DOC_STATUS": {
-        "ddl": """CREATE TABLE LIGHTRAG_DOC_STATUS (
+        "ddl": """SET search_path = "$user", public;
+                  DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'vector'
+                    ) THEN
+                      CREATE EXTENSION vector;
+                    END IF;
+                  END $$;
+                  CREATE TABLE LIGHTRAG_DOC_STATUS (
 	               workspace varchar(255) NOT NULL,
 	               id varchar(255) NOT NULL,
 	               content TEXT NULL,
