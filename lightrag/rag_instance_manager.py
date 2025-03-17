@@ -1,11 +1,11 @@
 import asyncio
 import threading
 from typing import Any
-from ..lightrag import LightRAG
-from ..llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
-from ..postgresql import PostgreSQLDB
-from ..types import GPTKeywordExtractionFormat
-from ..utils import EmbeddingFunc
+from .lightrag import LightRAG
+from .llm.azure_openai import azure_openai_complete_if_cache, azure_openai_embed
+from .postgresql import PostgreSQLDB
+from .types import GPTKeywordExtractionFormat
+from .utils import EmbeddingFunc
 
 
 class RAGInstanceManager:
@@ -31,7 +31,10 @@ class RAGInstanceManager:
             self._initialized = True
             # use kwargs to accept named arguments
             # here we take the args from argparser
-            self.args = kwargs["args"]
+            if kwargs["args"] is not None:
+                self.args = kwargs["args"]
+            else:
+                raise ValueError("args cannot be None")
 
     async def get_rag_instance(
         self, db_url: str, db_name: str, db_user_name: str, db_access_token: str
@@ -55,28 +58,28 @@ class RAGInstanceManager:
             if history_messages is None:
                 history_messages = []
             return await azure_openai_complete_if_cache(
-                self.args.llm_model,
+                self.args["llm_model"],
                 prompt,
                 access_token,
                 system_prompt=system_prompt,
                 history_messages=history_messages,
-                base_url=self.args.llm_binding_host,
-                api_version=self.args.llm_api_version,
+                base_url=self.args["llm_binding_host"],
+                api_version=self.args["llm_api_version"],
                 **kwargs,
             )
 
         embedding_func = EmbeddingFunc(
-            embedding_dim=self.args.embedding_dim,
-            max_token_size=self.args.max_embed_tokens,
+            embedding_dim=self.args["embedding_dim"],
+            max_token_size=self.args["max_embed_tokens"],
             # DO NOT MODIFY SEQUENCE OF ARGUMENTS
             # this function will be wrapped in partial function callable
             # with parameters set in advance, modifying the sequence will break the code
             func=lambda aad_token, texts: azure_openai_embed(
                 access_token=aad_token,
                 texts=texts,
-                model=self.args.embedding_model,
-                base_url=self.args.embedding_binding_host,
-                api_version=self.args.embedding_api_version,
+                model=self.args["embedding_model"],
+                base_url=self.args["embedding_binding_host"],
+                api_version=self.args["embedding_api_version"],
             ),
         )
         config = {
@@ -101,21 +104,21 @@ class RAGInstanceManager:
             db_url=db_url,
             db_name=db_name,
             llm_model_func=azure_openai_model_complete,
-            chunk_token_size=int(self.args.chunk_size),
-            chunk_overlap_token_size=int(self.args.chunk_overlap_size),
+            chunk_token_size=int(self.args["chunk_size"]),
+            chunk_overlap_token_size=int(self.args["chunk_overlap_size"]),
             llm_model_kwargs={
-                "timeout": self.args.timeout,
+                "timeout": self.args["timeout"],
             },
-            llm_model_name=self.args.llm_model,
-            llm_model_max_async=self.args.max_async,
-            llm_model_max_token_size=self.args.max_tokens,
+            llm_model_name=self.args["llm_model"],
+            llm_model_max_async=self.args["max_async"],
+            llm_model_max_token_size=self.args["max_tokens"],
             embedding_func=embedding_func,
-            kv_storage=self.args.kv_storage,
-            graph_storage=self.args.graph_storage,
-            vector_storage=self.args.vector_storage,
-            doc_status_storage=self.args.doc_status_storage,
+            kv_storage=self.args["kv_storage"],
+            graph_storage=self.args["graph_storage"],
+            vector_storage=self.args["vector_storage"],
+            doc_status_storage=self.args["doc_status_storage"],
             vector_db_storage_cls_kwargs={
-                "cosine_better_than_threshold": self.args.cosine_threshold
+                "cosine_better_than_threshold": self.args["cosine_threshold"]
             },
             enable_llm_cache_for_entity_extract=False,  # set to True for debugging to reduce llm fee
             embedding_cache_config={
@@ -123,10 +126,10 @@ class RAGInstanceManager:
                 "similarity_threshold": 0.95,
                 "use_llm_check": False,
             },
-            log_level=self.args.log_level,
-            namespace_prefix=self.args.namespace_prefix,
-            max_parallel_insert=self.args.max_parallel_insert,
-            cosine_threshold=self.args.cosine_threshold,
+            log_level=self.args["log_level"],
+            namespace_prefix=self.args["namespace_prefix"],
+            max_parallel_insert=self.args["max_parallel_insert"],
+            cosine_threshold=self.args["cosine_threshold"],
         )
         await rag.create_storages()
         return rag

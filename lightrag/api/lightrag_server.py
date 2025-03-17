@@ -12,8 +12,8 @@ from fastapi import (
 )
 import uvicorn
 
-from lightrag import LightRAG
-from .rag_instance_manager import RAGInstanceManager
+from ..lightrag import LightRAG
+from ..rag_instance_manager import RAGInstanceManager
 import os
 import logging.config
 import configparser
@@ -46,27 +46,27 @@ config.read("config.ini")
 def create_app(args, rag_instance_manager):
     # Set global top_k
     global global_top_k
-    global_top_k = args.top_k  # save top_k from args
+    global_top_k = args["top_k"]  # save top_k from args
 
     logging.info("LightRAG server starting...")
     logging.info("Output all arguments collected...")
     logging.info("################################################################")
-    for arg in vars(args):
-        logging.info(f"{str(arg)}: {str(getattr(args, arg))}")
+    for arg in args:
+        logging.info(f"{str(arg)}: {args[arg]}")
     logging.info("################################################################")
     # Add SSL validation
-    if args.ssl:
-        if not args.ssl_certfile or not args.ssl_keyfile:
+    if args["ssl"]:
+        if not args["ssl_certfile"] or not args["ssl_keyfile"]:
             raise Exception(
                 "SSL certificate and key files must be provided when SSL is enabled"
             )
-        if not os.path.exists(args.ssl_certfile):
-            raise Exception(f"SSL certificate file not found: {args.ssl_certfile}")
-        if not os.path.exists(args.ssl_keyfile):
-            raise Exception(f"SSL key file not found: {args.ssl_keyfile}")
+        if not os.path.exists(args["ssl_certfile"]):
+            raise Exception(f"SSL certificate file not found: {args["ssl_certfile"]}")
+        if not os.path.exists(args["ssl_keyfile"]):
+            raise Exception(f"SSL key file not found: {args["ssl_keyfile"]}")
 
     # Check if API key is provided either through env var or args
-    api_key = os.getenv("LIGHTRAG_API_KEY") or args.key
+    api_key = os.getenv("LIGHTRAG_API_KEY") or args["key"]
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -112,7 +112,7 @@ def create_app(args, rag_instance_manager):
 
     # Add routes
     app.include_router(create_document_routes(rag_instance_manager, api_key))
-    app.include_router(create_query_routes(rag_instance_manager, api_key, args.top_k))
+    app.include_router(create_query_routes(rag_instance_manager, api_key, args["top_k"]))
     app.include_router(create_graph_routes(rag_instance_manager, api_key))
 
     @app.get("/logs", dependencies=[Depends(optional_api_key)])
@@ -164,11 +164,11 @@ def create_app(args, rag_instance_manager):
         result = {}
         # Collect all non-None arguments
         result["Status"] = "Healthy"
-        for arg in vars(args):
-            if getattr(args, arg) is not None:
+        for arg in args:
+            if args[arg] is not None:
                 name = arg.replace("_", " ")
                 name = name.title()
-                result[name] = getattr(args, arg)
+                result[name] = args[arg]
         affinity_token = ""
         # initialize rag instance
         # send an example prompt to the model to check if it is working
@@ -211,29 +211,26 @@ def create_app(args, rag_instance_manager):
 
 
 def main():
-    args = parse_args()
+    args = vars(parse_args())
     rag_instance_manager = RAGInstanceManager(args=args)
     current_dir = os.path.dirname(__file__)
-    logging_config_path = os.path.join(current_dir, "logging_config.json")
+    logging_config_path = os.path.join(current_dir, "..", "logging_config.json")
     with open(logging_config_path, "r") as f:
         logging_configs = json.load(f)
-        logging_configs["handlers"]["file"]["filename"] = os.path.join(
-            current_dir, logging_configs["handlers"]["file"]["filename"]
-        )
         # Configure uvicorn logging
         logging.config.dictConfig(logging_configs)
     app = create_app(args, rag_instance_manager)
     uvicorn_config = {
         "app": app,
-        "host": args.host,
-        "port": args.port,
+        "host": args["host"],
+        "port": args["port"],
         "log_config": None,  # Disable default config
     }
-    if args.ssl:
+    if args["ssl"]:
         uvicorn_config.update(
             {
-                "ssl_certfile": args.ssl_certfile,
-                "ssl_keyfile": args.ssl_keyfile,
+                "ssl_certfile": args["ssl_certfile"],
+                "ssl_keyfile": args["ssl_keyfile"],
             }
         )
     uvicorn.run(**uvicorn_config)

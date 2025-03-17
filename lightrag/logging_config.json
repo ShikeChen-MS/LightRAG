@@ -13,59 +13,46 @@
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stderr"
 
-            },
-            "file": {
-                "class": "logging.FileHandler",
-                "formatter": "default",
-                "filename": "lightrag_server.log",
-                "mode": "a",
-                "encoding": "utf-8"
             }
         },
         "root": {
             "handlers": [
-                "default",
-                "file"
+                "default"
             ],
             "level": "INFO"
         },
         "loggers": {
             "azure": {
                 "handlers": [
-                    "default",
-                    "file"
+                    "default"
                 ],
                 "level": "WARNING",
                 "propagate": false
             },
             "httpx": {
                 "handlers": [
-                    "default",
-                    "file"
+                    "default"
                 ],
                 "level": "WARNING",
                 "propagate": false
             },
             "uvicorn": {
                 "handlers": [
-                    "default",
-                    "file"
+                    "default"
                 ],
                 "level": "INFO",
                 "propagate": false
             },
             "uvicorn.error": {
                 "handlers": [
-                    "default",
-                    "file"
+                    "default"
                 ],
                 "level": "INFO",
                 "propagate": false
             },
             "uvicorn.access": {
                 "handlers": [
-                    "default",
-                    "file"
+                    "default"
                 ],
                 "level": "INFO",
                 "propagate": false
