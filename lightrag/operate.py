@@ -138,9 +138,7 @@ async def _handle_entity_relation_summary(
 
 
 async def _handle_single_entity_extraction(
-    record_attributes: list[str],
-    chunk_key: str,
-    source_id: str
+    record_attributes: list[str], chunk_key: str, source_id: str
 ):
     if len(record_attributes) < 4 or record_attributes[0] != '"entity"':
         return None
@@ -175,7 +173,7 @@ async def _handle_single_relationship_extraction(
 
     edge_keywords = clean_str(record_attributes[4])
     edge_source_id = chunk_key
-    input_source_id= source_id
+    input_source_id = source_id
     weight = (
         float(record_attributes[-1]) if is_float_regex(record_attributes[-1]) else 1.0
     )
@@ -186,7 +184,7 @@ async def _handle_single_relationship_extraction(
         description=edge_description,
         keywords=edge_keywords,
         source_id=edge_source_id,
-        input_source_id = source_id,
+        input_source_id=source_id,
         metadata={"created_at": time.time()},
     )
 
@@ -581,7 +579,7 @@ async def extract_entities(
             compute_mdhash_id(dp["entity_name"], prefix="ent-"): {
                 "content": dp["entity_name"] + dp["description"],
                 "entity_name": dp["entity_name"],
-                "input_source_id": dp["input_source_id"]
+                "input_source_id": dp["input_source_id"],
             }
             for dp in all_entities_data
         }
@@ -1185,7 +1183,9 @@ async def _get_node_data(
     )
 
     # build prompt
-    entites_section_list = [["id", "entity", "type", "description", "input_source_id", "rank"]]
+    entites_section_list = [
+        ["id", "entity", "type", "description", "input_source_id", "rank"]
+    ]
     for i, n in enumerate(node_datas):
         entites_section_list.append(
             [
@@ -1465,7 +1465,9 @@ async def _get_edge_data(
         )
     relations_context = list_of_list_to_csv(relations_section_list)
 
-    entites_section_list = [["id", "entity", "type", "description", "input_source_id", "rank"]]
+    entites_section_list = [
+        ["id", "entity", "type", "description", "input_source_id", "rank"]
+    ]
     for i, n in enumerate(use_entities):
         entites_section_list.append(
             [

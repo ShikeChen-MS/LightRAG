@@ -234,7 +234,11 @@ async def pipeline_enqueue_file(
         # Insert into the RAG queue
         if content:
             await rag.apipeline_enqueue_documents(
-                storage_account_url, storage_container_name, access_token, [file_path], content
+                storage_account_url,
+                storage_container_name,
+                access_token,
+                [file_path],
+                content,
             )
             logging.info(f"Successfully fetched and enqueued file: {file_path}")
             return True
@@ -599,7 +603,7 @@ def create_document_routes(
                     status_code=400,
                     detail=f"Unsupported file type. Supported types: {rag.document_manager.supported_extensions}",
                 )
-            if ' ' in file.filename:
+            if " " in file.filename:
                 raise HTTPException(
                     status_code=400,
                     detail="File name (which will be used as source id) cannot contain spaces.",

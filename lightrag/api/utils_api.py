@@ -44,13 +44,9 @@ def get_api_key_dependency(api_key: Optional[str]):
         api_key_header_value: Optional[str] = Security(api_key_header),
     ):
         if not api_key_header_value:
-            raise HTTPException(
-                status_code=403, detail="API Key required"
-            )
+            raise HTTPException(status_code=403, detail="API Key required")
         if api_key_header_value != api_key:
-            raise HTTPException(
-                status_code=403, detail="Invalid API Key"
-            )
+            raise HTTPException(status_code=403, detail="Invalid API Key")
         return api_key_header_value
 
     return api_key_auth
@@ -294,7 +290,9 @@ async def initialize_rag_with_header(
 ):
     try:
         if x_affinity_token:
-            rag = await rag_instance_manager.get_lightrag_by_affinity_token(x_affinity_token)
+            rag = await rag_instance_manager.get_lightrag_by_affinity_token(
+                x_affinity_token
+            )
         else:
             rag = await rag_instance_manager.get_lightrag(
                 storage_account_url=storage_account_url,

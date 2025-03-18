@@ -533,7 +533,7 @@ class LightRAG:
         storage_container_name: str,
         access_token: LightRagTokenCredential,
         source_ids: list[str],
-        input: str | list[str]
+        input: str | list[str],
     ) -> None:
         """
         Pipeline for Processing Documents
@@ -552,7 +552,6 @@ class LightRAG:
 
         if len(source_ids) != len(set(source_ids)):
             raise ValueError("source_ids must be unique")
-
 
         # Generate contents dict of IDs provided by user and documents
         contents = {id_: doc for id_, doc in zip(source_ids, input)}
