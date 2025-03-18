@@ -84,14 +84,20 @@ class RAGInstanceManager:
         )
         config = {
             "host": db_url,
-            "port": 6432,  # always use 6432 to connect to PGBouncer for connection pooling
+            "port": 5432,  # always use 6432 to connect to PGBouncer for connection pooling
             "user": db_user_name,
             "password": db_access_token,
             "database": db_name,
         }
+        conn = await PostgreSQLDB.get_connection(
+            db_user_name, db_access_token, db_name, db_url
+        )
+        await PostgreSQLDB.load_age(conn)
+        await conn.close()
         db = PostgreSQLDB(config)
         await db.initdb()
         await db.check_tables()
+        await db.create_graph()
         rag = LightRAG(
             db=db,
             scan_progress={

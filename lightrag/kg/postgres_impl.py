@@ -188,6 +188,7 @@ class PGVectorStorage(BaseVectorStorage, ABC):
             data: dict[str, Any] = {
                 "workspace": self.db.workspace,
                 "id": item["__id__"],
+                "source_id": item["source_id"],
                 "tokens": item["tokens"],
                 "chunk_order_index": item["chunk_order_index"],
                 "full_doc_id": item["full_doc_id"],
@@ -245,7 +246,7 @@ class PGVectorStorage(BaseVectorStorage, ABC):
             for i in range(0, len(contents), self._max_batch_size)
         ]
 
-        embedding_tasks = [self.embedding_func(batch) for batch in batches]
+        embedding_tasks = [self.embedding_func(ai_access_token,batch) for batch in batches]
         embeddings_list = await asyncio.gather(*embedding_tasks)
 
         embeddings = np.concatenate(embeddings_list)
@@ -378,6 +379,7 @@ class PGDocStatusStorage(DocStatusStorage):
                 created_at=element["created_at"],
                 updated_at=element["updated_at"],
                 chunks_count=element["chunks_count"],
+                source_id=element["source_id"],
             )
             for element in result
         }
@@ -397,14 +399,15 @@ class PGDocStatusStorage(DocStatusStorage):
         if not data:
             return
 
-        sql = """insert into LIGHTRAG_DOC_STATUS(workspace,id,content,content_summary,content_length,chunks_count,status)
-                 values($1,$2,$3,$4,$5,$6,$7)
+        sql = """insert into LIGHTRAG_DOC_STATUS(workspace,id,source_id,content,content_summary,content_length,chunks_count,status)
+                 values($1,$2,$3,$4,$5,$6,$7,$8)
                   on conflict(id,workspace) do update set
                   content = EXCLUDED.content,
                   content_summary = EXCLUDED.content_summary,
                   content_length = EXCLUDED.content_length,
                   chunks_count = EXCLUDED.chunks_count,
                   status = EXCLUDED.status,
+                  source_id = EXCLUDED.source_id,
                   updated_at = CURRENT_TIMESTAMP"""
         for k, v in data.items():
             # chunks_count is optional
@@ -413,6 +416,7 @@ class PGDocStatusStorage(DocStatusStorage):
                 {
                     "workspace": self.db.workspace,
                     "id": k,
+                    "source_id": v["source_id"],
                     "content": v["content"],
                     "content_summary": v["content_summary"],
                     "content_length": v["content_length"],
@@ -882,7 +886,7 @@ class PGGraphStorage(BaseGraphStorage):
         drop_sql = SQL_TEMPLATES["drop_vdb_relation"]
         await self.db.execute(drop_sql)
         drop_sql = (
-            f"SELECT * FROM ag_catalog.drop_graph({self.graph_name}, cascade := true);"
+            """SELECT * FROM ag_catalog.drop_graph({self.graph_name}, cascade := true)"""
         )
         await self.db.execute(drop_sql)
 
@@ -943,12 +947,13 @@ SQL_TEMPLATES = {
                                       mode=EXCLUDED.mode,
                                       update_time = CURRENT_TIMESTAMP
                                      """,
-    "upsert_chunk": """INSERT INTO LIGHTRAG_DOC_CHUNKS (workspace, id, tokens,
+    "upsert_chunk": """INSERT INTO LIGHTRAG_DOC_CHUNKS (workspace, id, source_id, tokens,
                       chunk_order_index, full_doc_id, content, content_vector)
-                      VALUES ($1, $2, $3, $4, $5, $6, $7)
+                      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                       ON CONFLICT (workspace,id) DO UPDATE
                       SET tokens=EXCLUDED.tokens,
                       chunk_order_index=EXCLUDED.chunk_order_index,
+                      source_id = EXCLUDED.source_id,
                       full_doc_id=EXCLUDED.full_doc_id,
                       content = EXCLUDED.content,
                       content_vector=EXCLUDED.content_vector,

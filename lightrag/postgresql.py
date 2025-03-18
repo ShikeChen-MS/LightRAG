@@ -35,6 +35,7 @@ class PostgreSQLDB:
                 port=self.port,
                 min_size=1,
                 max_size=self.max,
+                statement_cache_size=0
             )
 
             logging.info(
@@ -46,41 +47,65 @@ class PostgreSQLDB:
             )
             raise
 
-    @staticmethod
-    async def configure_age(connection: asyncpg.Connection, graph_name: str) -> None:
-        """Set the Apache AGE environment and creates a graph if it does not exist.
+    @classmethod
+    async def get_connection(
+        cls,
+        user: str,
+        password: str,
+        database: str,
+        host: str,
+        port: int = 5432,
+    ):
+        connection = await asyncpg.connect(
+            user=user,
+            password=password,
+            database=database,
+            host=host,
+            port=port,
+        )
+        return connection
 
-        This method:
-        - Sets the PostgreSQL `search_path` to include `ag_catalog`, ensuring that Apache AGE functions can be used without specifying the schema.
-        - Attempts to create a new graph with the provided `graph_name` if it does not already exist.
-        - Silently ignores errors related to the graph already existing.
+    @classmethod
+    async def load_age(cls, connection):
+        """Load the Apache AGE extension in PostgreSQL.
+
+        This method attempts to load the Apache AGE extension in the connected PostgreSQL database.
+        If the extension is already loaded, it will silently ignore the error.
 
         """
         try:
             await connection.execute(  # type: ignore
-                'SET search_path = ag_catalog, "$user", public'
+                "CREATE EXTENSION IF NOT EXISTS age CASCADE;"
             )
-            await connection.execute(
-                """DO $$
-                  BEGIN
-                    IF NOT EXISTS (
-                      SELECT 1
-                      FROM pg_extension
-                      WHERE extname = 'age'
-                    ) THEN
-                      CREATE EXTENSION age;
-                    END IF;
-                  END $$;
-                """
+            await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
+            logging.info("PostgreSQL, Loaded age extension successfully")
+        except Exception as e:
+            logging.error(f"PostgreSQL, Failed to load age extension, Got:{e}")
+            raise
+
+
+    async def create_graph(self) -> None:
+        """Create a new graph in the Apache AGE extension.
+
+        This method attempts to create a new graph with the specified name.
+        If the graph already exists, it will silently ignore the error.
+
+        """
+        try:
+            async with self.pool.acquire() as connection:
+                await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
+                await connection.execute(  # type: ignore
+                    f"select create_graph('lightrag');"
             )
-            await connection.execute(  # type: ignore
-                f"select create_graph('{graph_name}')"
-            )
-        except (
-            asyncpg.exceptions.InvalidSchemaNameError,
-            asyncpg.exceptions.UniqueViolationError,
-        ):
-            pass
+        except Exception as e:
+            # Check if error message indicates that the graph already exists
+            if "already exists" in str(e):
+                logging.info(
+                    f"PostgreSQL, Graph 'lightrag' already exists, skipping creation."
+                )
+            else:
+                logging.error(f"PostgreSQL, Failed to set search path, Got:{e}")
+                raise
 
     async def check_tables(self):
         for k, v in TABLES.items():
@@ -109,15 +134,32 @@ class PostgreSQLDB:
     ) -> dict[str, Any] | None | list[dict[str, Any]]:
         async with self.pool.acquire() as connection:  # type: ignore
             if with_age and graph_name:
-                await self.configure_age(connection, graph_name)  # type: ignore
+                await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
             elif with_age and not graph_name:
                 raise ValueError("Graph name is required when with_age is True")
-
+            search_path = await connection.fetchval('SHOW search_path;')
+            logging.info("Search path: %s", search_path)
             try:
-                if params:
-                    rows = await connection.fetch(sql, *params.values())
-                else:
-                    rows = await connection.fetch(sql)
+                retry = 0
+                while retry <= 3:
+                    retry += 1
+                    try:
+                        if params:
+                            rows = await connection.fetch(sql, *params.values())
+                            break
+                        else:
+                            rows = await connection.fetch(sql)
+                            break
+                    except Exception as e:
+                        if with_age:
+                            logging.error(
+                                f"PostgreSQL database, error:{e}"
+                            )
+                        else:
+                            logging.error(
+                                f"PostgreSQL database, error:{e}"
+                            )
+                            raise
 
                 if multirows:
                     if rows:
@@ -147,7 +189,7 @@ class PostgreSQLDB:
         try:
             async with self.pool.acquire() as connection:  # type: ignore
                 if with_age and graph_name:
-                    await self.configure_age(connection, graph_name)  # type: ignore
+                    await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
                 elif with_age and not graph_name:
                     raise ValueError("Graph name is required when with_age is True")
 
@@ -206,6 +248,7 @@ TABLES = {
                   END $$;
                   CREATE TABLE LIGHTRAG_DOC_CHUNKS (
                     id VARCHAR(255),
+                    source_id VARCHAR(255),
                     workspace VARCHAR(255),
                     full_doc_id VARCHAR(256),
                     chunk_order_index INTEGER,
@@ -307,6 +350,7 @@ TABLES = {
 	               content_length int4 NULL,
 	               chunks_count int4 NULL,
 	               status varchar(64) NULL,
+	               source_id varchar(255) NULL,
 	               created_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
 	               updated_at timestamp DEFAULT CURRENT_TIMESTAMP NULL,
 	               CONSTRAINT LIGHTRAG_DOC_STATUS_PK PRIMARY KEY (workspace, id)

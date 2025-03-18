@@ -115,8 +115,6 @@ async def pipeline_enqueue_file(
     content: str,
 ) -> bool:
     """Add a file to the queue for processing"""
-    lease = None
-    blob_lease = None
     try:
         # Insert into the RAG queue
         if content:

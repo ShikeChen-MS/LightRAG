@@ -4,6 +4,7 @@ import configparser
 import os
 import threading
 import logging
+import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from functools import partial
@@ -341,7 +342,7 @@ class LightRAG:
 
     async def finalize_storages(self):
         """Asynchronously finalize the storages"""
-        await self.db.pool.close()
+        await self.db.connection.close()
         logging.debug("Finalized Storages")
 
     async def get_graph_labels(self):
@@ -652,6 +653,7 @@ class LightRAG:
                         )
                     except Exception as e:
                         logging.error(f"Failed to process document {doc_id}: {str(e)}")
+                        logging.error(str(traceback.format_exc()))
                         await self.doc_status.upsert(
                             {
                                 doc_id: {
