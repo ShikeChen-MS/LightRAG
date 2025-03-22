@@ -1,6 +1,4 @@
 aiohttp
-AI.Models
-AI.Schemas
 aiofiles
 asyncpg
 configparser

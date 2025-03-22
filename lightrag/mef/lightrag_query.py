@@ -2,52 +2,14 @@ import logging
 import traceback
 from typing import Dict
 from dotenv import load_dotenv
-from ai_models.model import Executable, Initializable
+
 from lightrag import QueryParam, LightRAG
 from lightrag.api.rag_instance_manager import RAGInstanceManager
-from lightrag.api.utils_api import(
-    parse_args,
-    extract_token_value,
-    get_lightrag_token_credential,
-    initialize_rag_with_header,
-    wait_for_storage_initialization
-)
-# TODO: following imports are a temporary workaround for long load time
-# TODO: on graph db related module especially networkx and graspologic.
-# TODO: This expected to be fix after migrate to Azure Database server for PostgreSQL.
-# TODO: the workaround is to import the module here so LightRAG server will
-# TODO: take longer to start up but the initialization of the storage will be faster.
-import lightrag.kg.json_doc_status_impl
-import lightrag.kg.json_kv_impl
-import lightrag.kg.nano_vector_db_impl
-import lightrag.kg.networkx_impl
-import lightrag.llm.azure_openai
-import lightrag.lightrag
-import lightrag.az_token_credential
-import lightrag.base
+from lightrag.api.utils_api import parse_args, extract_token_value, get_lightrag_token_credential, \
+    initialize_rag_with_header, wait_for_storage_initialization
 
 
 class LightRAGQuery:
-
-    def __init__(self):
-        """Inherited init."""
-        Initializable.__init__(self)
-        Executable.__init__(self)
-        self.rag_instance_manager = None
-        self.arguments = None
-
-    def initialize(self, *args, **kwargs):
-        """Load env variables and initialize RAGInstanceManager."""
-
-        try:
-            logging.info(f"RUNNING initialize with args: {args}")
-            load_dotenv(override=True)
-            self.arguments = parse_args()
-            self.rag_instance_manager = RAGInstanceManager(args=self.arguments)
-
-        except Exception as ex:
-            logging.error(f"Error in LightRAGBuilder initialization: {str(ex)}")
-            raise ex
 
     async def execute(
         self,
@@ -64,6 +26,9 @@ class LightRAGQuery:
         Handle a POST request at the /query endpoint to process user queries using RAG capabilities.
         """
         try:
+            load_dotenv(override=True)
+            args = parse_args()
+            rag_instance_manager = RAGInstanceManager(args=args)
             ai_access_token = extract_token_value(
                 ai_access_token, "Azure-AI-Access-Token"
             )
@@ -91,7 +56,7 @@ class LightRAGQuery:
                 history_turns = history_turns
             )
             rag: LightRAG = await initialize_rag_with_header(
-                self.rag_instance_manager,
+                rag_instance_manager,
                 storage_account_url,
                 storage_container_name,
                 None,
