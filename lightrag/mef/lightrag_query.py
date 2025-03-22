@@ -56,7 +56,7 @@ class LightRAGQuery:
         history_turns: int,
         storage_account_url: str,
         storage_container_name: str,
-        storage_token_expiry: int,
+        storage_token_expiry: str,
         ai_access_token: str,
         storage_access_token: str
     )-> Dict[str, str]:
