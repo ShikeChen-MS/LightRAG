@@ -1,8 +1,9 @@
 import logging
-from typing import Any
+from typing import Any, Dict
 import asyncpg
 from asyncpg import Pool
 import sys
+import hashlib
 
 if sys.platform.startswith("win"):
     import asyncio.windows_events
@@ -12,22 +13,25 @@ if sys.platform.startswith("win"):
 
 class PostgreSQLDB:
     def __init__(self, config: dict[str, Any], **kwargs: Any):
-        self.host = config.get("host", "localhost")
-        self.port = config.get("port", 5432)
-        self.user = config.get("user", "postgres")
-        self.password = config.get("password", None)
-        self.database = config.get("database", "postgres")
+        self.host = config["host"]
+        self.port = config["port"]
+        self.user = config["user"]
+        self.password = config["password"]
+        self.database = config["database"]
         self.workspace = "default"
-        self.max = 12
+        self.max = 300
         self.increment = 1
-        self.pool: Pool | None = None
+        self.pool: Dict[str,Pool] = {}
 
         if self.user is None or self.password is None or self.database is None:
             raise ValueError("Missing database user, password, or database")
 
     async def initdb(self):
         try:
-            self.pool = await asyncpg.create_pool(  # type: ignore
+            hashkey = await self.get_hash()
+            if hashkey in self.pool:
+                return
+            self.pool[hashkey] = await asyncpg.create_pool(  # type: ignore
                 user=self.user,
                 password=self.password,
                 database=self.database,
@@ -37,7 +41,6 @@ class PostgreSQLDB:
                 max_size=self.max,
                 statement_cache_size=0
             )
-
             logging.info(
                 f"PostgreSQL, Connected to database at {self.host}:{self.port}/{self.database}"
             )
@@ -47,65 +50,54 @@ class PostgreSQLDB:
             )
             raise
 
-    @classmethod
-    async def get_connection(
-        cls,
-        user: str,
-        password: str,
-        database: str,
-        host: str,
-        port: int = 5432,
-    ):
-        connection = await asyncpg.connect(
-            user=user,
-            password=password,
-            database=database,
-            host=host,
-            port=port,
-        )
-        return connection
+    async def get_hash(self):
+        host = self.host.lower()
+        if not self.host.endswith(":"):
+            host = self.host + ":"
+        hash_string = f"{host}{self.port.lower()}/{self.database.lower()}"
+        hashkey = hashlib.sha256(hash_string.encode()).hexdigest()
+        return hashkey
 
-    @classmethod
-    async def load_age(cls, connection):
-        """Load the Apache AGE extension in PostgreSQL.
+    async def acquire_pool(self):
+        hashkey = await self.get_hash()
+        if hashkey in self.pool:
+            return self.pool[hashkey]
+        else:
+            raise ValueError("Pool not found")
 
-        This method attempts to load the Apache AGE extension in the connected PostgreSQL database.
-        If the extension is already loaded, it will silently ignore the error.
-
+    @staticmethod
+    async def configure_age(connection: asyncpg.Connection, graph_name: str) -> None:
+        """Set the Apache AGE environment and creates a graph if it does not exist.
+        This method:
+        - Sets the PostgreSQL `search_path` to include `ag_catalog`, ensuring that Apache AGE functions can be used without specifying the schema.
+        - Attempts to create a new graph with the provided `graph_name` if it does not already exist.
+        - Silently ignores errors related to the graph already existing.
         """
         try:
+            await connection.execute(
+                """DO $$
+                  BEGIN
+                    IF NOT EXISTS (
+                      SELECT 1
+                      FROM pg_extension
+                      WHERE extname = 'age'
+                    ) THEN
+                      CREATE EXTENSION age;
+                    END IF;
+                  END $$;
+                """
+            )
             await connection.execute(  # type: ignore
-                "CREATE EXTENSION IF NOT EXISTS age CASCADE;"
+                'SET search_path = ag_catalog, "$user", public'
             )
-            await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
-            logging.info("PostgreSQL, Loaded age extension successfully")
-        except Exception as e:
-            logging.error(f"PostgreSQL, Failed to load age extension, Got:{e}")
-            raise
-
-
-    async def create_graph(self) -> None:
-        """Create a new graph in the Apache AGE extension.
-
-        This method attempts to create a new graph with the specified name.
-        If the graph already exists, it will silently ignore the error.
-
-        """
-        try:
-            async with self.pool.acquire() as connection:
-                await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
-                await connection.execute(  # type: ignore
-                    f"select create_graph('lightrag');"
+            await connection.execute(  # type: ignore
+                f"select create_graph('{graph_name}')"
             )
-        except Exception as e:
-            # Check if error message indicates that the graph already exists
-            if "already exists" in str(e):
-                logging.info(
-                    f"PostgreSQL, Graph 'lightrag' already exists, skipping creation."
-                )
-            else:
-                logging.error(f"PostgreSQL, Failed to set search path, Got:{e}")
-                raise
+        except (
+            asyncpg.exceptions.InvalidSchemaNameError,
+            asyncpg.exceptions.UniqueViolationError,
+        ):
+            pass
 
     async def check_tables(self):
         for k, v in TABLES.items():
@@ -132,35 +124,18 @@ class PostgreSQLDB:
         with_age: bool = False,
         graph_name: str | None = None,
     ) -> dict[str, Any] | None | list[dict[str, Any]]:
-        async with self.pool.acquire() as connection:  # type: ignore
+        async with self.acquire_pool().acquire() as connection:  # type: ignore
             if with_age and graph_name:
-                await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
+                await self.configure_age(connection, graph_name)
             elif with_age and not graph_name:
                 raise ValueError("Graph name is required when with_age is True")
             search_path = await connection.fetchval('SHOW search_path;')
             logging.info("Search path: %s", search_path)
             try:
-                retry = 0
-                while retry <= 3:
-                    retry += 1
-                    try:
-                        if params:
-                            rows = await connection.fetch(sql, *params.values())
-                            break
-                        else:
-                            rows = await connection.fetch(sql)
-                            break
-                    except Exception as e:
-                        if with_age:
-                            logging.error(
-                                f"PostgreSQL database, error:{e}"
-                            )
-                        else:
-                            logging.error(
-                                f"PostgreSQL database, error:{e}"
-                            )
-                            raise
-
+                if params:
+                    rows = await connection.fetch(sql, *params.values())
+                else:
+                    rows = await connection.fetch(sql)
                 if multirows:
                     if rows:
                         columns = [col for col in rows[0].keys()]
@@ -187,9 +162,9 @@ class PostgreSQLDB:
         graph_name: str | None = None,
     ):
         try:
-            async with self.pool.acquire() as connection:  # type: ignore
+            async with self.acquire_pool().acquire() as connection:  # type: ignore
                 if with_age and graph_name:
-                    await connection.execute("SET search_path = ag_catalog, \"$user\", public;")
+                    await self.configure_age(connection, graph_name)
                 elif with_age and not graph_name:
                     raise ValueError("Graph name is required when with_age is True")
 
