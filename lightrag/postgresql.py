@@ -19,25 +19,21 @@ class PostgreSQLDB:
         self.password = config["password"]
         self.database = config["database"]
         self.workspace = "default"
-        self.max = 300
+        self.max = 100
         self.increment = 1
-        self.pool: Dict[str,Pool] = {}
+        self.pool: Pool | None = None
 
         if self.user is None or self.password is None or self.database is None:
             raise ValueError("Missing database user, password, or database")
 
     async def initdb(self):
         try:
-            hashkey = await self.get_hash()
-            if hashkey in self.pool:
-                return
-            self.pool[hashkey] = await asyncpg.create_pool(  # type: ignore
+            self.pool = await asyncpg.create_pool(  # type: ignore
                 user=self.user,
                 password=self.password,
                 database=self.database,
                 host=self.host,
                 port=self.port,
-                min_size=1,
                 max_size=self.max,
                 statement_cache_size=0
             )
@@ -54,16 +50,9 @@ class PostgreSQLDB:
         host = self.host.lower()
         if not self.host.endswith(":"):
             host = self.host + ":"
-        hash_string = f"{host}{self.port.lower()}/{self.database.lower()}"
+        hash_string = f"{host}{self.port}/{self.database.lower()}"
         hashkey = hashlib.sha256(hash_string.encode()).hexdigest()
         return hashkey
-
-    async def acquire_pool(self):
-        hashkey = await self.get_hash()
-        if hashkey in self.pool:
-            return self.pool[hashkey]
-        else:
-            raise ValueError("Pool not found")
 
     @staticmethod
     async def configure_age(connection: asyncpg.Connection, graph_name: str) -> None:
@@ -74,19 +63,6 @@ class PostgreSQLDB:
         - Silently ignores errors related to the graph already existing.
         """
         try:
-            await connection.execute(
-                """DO $$
-                  BEGIN
-                    IF NOT EXISTS (
-                      SELECT 1
-                      FROM pg_extension
-                      WHERE extname = 'age'
-                    ) THEN
-                      CREATE EXTENSION age;
-                    END IF;
-                  END $$;
-                """
-            )
             await connection.execute(  # type: ignore
                 'SET search_path = ag_catalog, "$user", public'
             )
@@ -124,7 +100,7 @@ class PostgreSQLDB:
         with_age: bool = False,
         graph_name: str | None = None,
     ) -> dict[str, Any] | None | list[dict[str, Any]]:
-        async with self.acquire_pool().acquire() as connection:  # type: ignore
+        async with self.pool.acquire() as connection:  # type: ignore
             if with_age and graph_name:
                 await self.configure_age(connection, graph_name)
             elif with_age and not graph_name:
@@ -162,7 +138,7 @@ class PostgreSQLDB:
         graph_name: str | None = None,
     ):
         try:
-            async with self.acquire_pool().acquire() as connection:  # type: ignore
+            async with self.pool.acquire() as connection:  # type: ignore
                 if with_age and graph_name:
                     await self.configure_age(connection, graph_name)
                 elif with_age and not graph_name:

@@ -655,7 +655,7 @@ class PGGraphStorage(BaseGraphStorage):
     async def has_node(self, node_id: str) -> bool:
         entity_name_label = self._encode_graph_label(node_id.strip('"'))
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MATCH (n:Entity {node_id: "%s"})
                      RETURN count(n) > 0 AS node_exists
                    $$) AS (node_exists bool)""" % (
@@ -671,7 +671,7 @@ class PGGraphStorage(BaseGraphStorage):
         src_label = self._encode_graph_label(source_node_id.strip('"'))
         tgt_label = self._encode_graph_label(target_node_id.strip('"'))
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MATCH (a:Entity {node_id: "%s"})-[r]-(b:Entity {node_id: "%s"})
                      RETURN COUNT(r) > 0 AS edge_exists
                    $$) AS (edge_exists bool)""" % (
@@ -686,7 +686,7 @@ class PGGraphStorage(BaseGraphStorage):
 
     async def get_node(self, node_id: str) -> dict[str, str] | None:
         label = self._encode_graph_label(node_id.strip('"'))
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MATCH (n:Entity {node_id: "%s"})
                      RETURN n
                    $$) AS (n agtype)""" % (
@@ -704,7 +704,7 @@ class PGGraphStorage(BaseGraphStorage):
     async def node_degree(self, node_id: str) -> int:
         label = self._encode_graph_label(node_id.strip('"'))
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MATCH (n:Entity {node_id: "%s"})-[]->(x)
                      RETURN count(x) AS total_edge_count
                    $$) AS (total_edge_count integer)""" % (
@@ -735,7 +735,7 @@ class PGGraphStorage(BaseGraphStorage):
         src_label = self._encode_graph_label(source_node_id.strip('"'))
         tgt_label = self._encode_graph_label(target_node_id.strip('"'))
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MATCH (a:Entity {node_id: "%s"})-[r]->(b:Entity {node_id: "%s"})
                      RETURN properties(r) as edge_properties
                      LIMIT 1
@@ -757,7 +757,7 @@ class PGGraphStorage(BaseGraphStorage):
         """
         label = self._encode_graph_label(source_node_id.strip('"'))
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                       MATCH (n:Entity {node_id: "%s"})
                       OPTIONAL MATCH (n)-[]-(connected)
                       RETURN n, connected
@@ -802,7 +802,7 @@ class PGGraphStorage(BaseGraphStorage):
         label = self._encode_graph_label(node_id.strip('"'))
         properties = node_data
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MERGE (n:Entity {node_id: "%s"})
                      SET n += %s
                      RETURN n
@@ -839,7 +839,7 @@ class PGGraphStorage(BaseGraphStorage):
         tgt_label = self._encode_graph_label(target_node_id.strip('"'))
         edge_properties = edge_data
 
-        query = """SELECT * FROM cypher('%s', $$
+        query = """SELECT * FROM ag_catalog.cypher('%s', $$
                      MATCH (source:Entity {node_id: "%s"})
                      WITH source
                      MATCH (target:Entity {node_id: "%s"})

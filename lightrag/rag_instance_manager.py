@@ -84,7 +84,7 @@ class RAGInstanceManager:
         )
         config = {
             "host": db_url,
-            "port": 6432,  # always use 6432 to connect to PGBouncer for connection pooling
+            "port": 6432,
             "user": db_user_name,
             "password": db_access_token,
             "database": db_name,
